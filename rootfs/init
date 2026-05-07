@@ -1,11 +1,13 @@
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
+#!/bin/busybox sh
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
 
 echo ""
-echo "==============================================="
-echo " Bharat Linux booted Successfully "
-echo "==============================================="
+echo "================================="
+echo " Bharat-linux booted successfully "
+echo "================================="
 echo ""
 
-exec /bin/sh
+exec sh
