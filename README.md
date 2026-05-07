@@ -1,3 +1,4 @@
+
 # Bharat-linux
 
 A minimal Linux distribution built from scratch for learning Linux internals, kernel architecture, boot systems, and operating system engineering.
@@ -19,3 +20,5 @@ A minimal Linux distribution built from scratch for learning Linux internals, ke
 - iso/       → bootable ISO generation
 - build/     → temporary build artifacts
 - docs/      → notes/documentation
+=======
+# Bharat-Linux
