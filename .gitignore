@@ -5,3 +5,8 @@ build/
 *.cpio
 *.gz
 *.tmp
+*.tar.xz
+*.iso
+*.img
+*.cpio
+*.gz

@@ -21,3 +21,5 @@ A minimal Linux distribution built from scratch for learning Linux internals, ke
 - build/     → temporary build artifacts
 - docs/      → notes/documentation
 # Bharat-Linux
+
+## Currently in Development phase
