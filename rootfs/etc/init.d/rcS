@@ -1,0 +1,17 @@
+#!/bin/sh
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+echo "Bharat-linux starting..."
+
+hostname Bharat-linux
+
+ifconfig lo 127.0.0.1 up
+
+echo ""
+echo "================================="
+echo " Bharat-linux system initialized "
+echo "================================="
+echo ""
