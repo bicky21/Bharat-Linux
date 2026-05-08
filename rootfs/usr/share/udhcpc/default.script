@@ -1,0 +1,17 @@
+#!/bin/sh
+
+case "$1" in
+    deconfig)
+        ifconfig $interface 0.0.0.0
+        ;;
+
+    renew|bound)
+        ifconfig $interface $ip netmask $subnet
+
+        route add default gw $router
+
+        echo "nameserver $dns" > /etc/resolv.conf
+        ;;
+esac
+
+exit 0
