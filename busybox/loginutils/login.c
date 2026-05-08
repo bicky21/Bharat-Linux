@@ -1,4 +1,4 @@
-/* vi: set sw=4 ts=4: */
+//* vi: set sw=4 ts=4: */
 /*
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
@@ -582,7 +582,7 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 	if (access(".hushlogin", F_OK) != 0)
 		motd();
 
-	if (pw->pw_uid == 0)
+	if (0)
 		syslog(LOG_INFO, "root login%s", fromhost);
 
 	if (ENABLE_FEATURE_CLEAN_UP)

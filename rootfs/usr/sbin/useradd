@@ -1,0 +1,41 @@
+#!/bin/sh
+
+USER=$1
+
+if [ -z "$USER" ]; then
+    echo "Usage: useradd <username>"
+    exit 1
+fi
+
+if grep -q "^$USER:" /etc/passwd; then
+    echo "User already exists"
+    exit 1
+fi
+
+LAST_UID=$(tail -n 1 /etc/passwd | cut -d: -f3)
+
+if [ -z "$LAST_UID" ]; then
+    UID=1000
+else
+    UID=$((LAST_UID + 1))
+fi
+
+printf "New password: "
+stty -echo
+read PASS
+stty echo
+echo ""
+
+HASH=$(cryptpw -m md5 "$PASS")
+
+echo "$USER:x:$UID:$UID:$USER:/home/$USER:/bin/sh" >> /etc/passwd
+
+echo "$USER:$HASH:0:0:99999:7:::" >> /etc/shadow
+
+echo "$USER:x:$UID:" >> /etc/group
+
+mkdir -p /home/$USER
+
+chown $UID:$UID /home/$USER
+
+echo "User $USER created"

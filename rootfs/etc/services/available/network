@@ -1,0 +1,33 @@
+#!/bin/sh
+
+case "$1" in
+
+start)
+    echo "[+] Starting network"
+
+    ifconfig lo 127.0.0.1 up
+
+    ifconfig eth0 up
+
+    udhcpc -q -i eth0
+    ;;
+
+stop)
+    echo "[-] Stopping network"
+
+    ifconfig eth0 down
+    ;;
+
+restart)
+    $0 stop
+    $0 start
+    ;;
+
+status)
+    ifconfig eth0
+    ;;
+
+*)
+    echo "Usage: network {start|stop|restart|status}"
+    ;;
+esac
