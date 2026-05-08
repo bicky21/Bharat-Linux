@@ -10,7 +10,8 @@ mkdir -p /dev/pts
 mount -t devpts devpts /dev/pts
 
 ifconfig lo 127.0.0.1 up
-
+ifconfig eth0 up
+udhcpc -i eth0
 echo ""
 echo "================================="
 echo " Bharat-linux system initialized "

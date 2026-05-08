@@ -1,0 +1,35 @@
+#!/bin/sh
+
+PKGDB="/var/lib/bpk/installed"
+
+mkdir -p $PKGDB
+
+case "$1" in
+    install)
+        PACKAGE="$2"
+
+        if [ -z "$PACKAGE" ]; then
+            echo "Usage: bpk install <package>"
+            exit 1
+        fi
+
+        echo "Installing $PACKAGE..."
+
+        tar -xzf "$PACKAGE" -C /
+
+        touch "$PKGDB/$(basename $PACKAGE)"
+
+        echo "Installation complete."
+        ;;
+
+    list)
+        echo "Installed packages:"
+        ls $PKGDB
+        ;;
+
+    *)
+        echo "Usage:"
+        echo "  bpk install <package>"
+        echo "  bpk list"
+        ;;
+esac
