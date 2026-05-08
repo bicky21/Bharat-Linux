@@ -1,0 +1,35 @@
+#!/bin/sh
+
+USER=${1:-root}
+
+if ! grep -q "^$USER:" /etc/passwd; then
+    echo "User does not exist"
+    exit 1
+fi
+
+printf "New password: "
+stty -echo
+read PASS1
+stty echo
+echo ""
+
+printf "Retype password: "
+stty -echo
+read PASS2
+stty echo
+echo ""
+
+if [ "$PASS1" != "$PASS2" ]; then
+    echo "Passwords do not match"
+    exit 1
+fi
+
+HASH=$(cryptpw -m md5 "$PASS1")
+
+OLD=$(grep "^$USER:" /etc/shadow)
+
+NEW="$USER:$HASH:0:0:99999:7:::"
+
+sed -i "s|^$OLD|$NEW|" /etc/shadow
+
+echo "Password updated"

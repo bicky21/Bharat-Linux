@@ -10,3 +10,10 @@ build/
 *.img
 *.cpio
 *.gz
+disk/
+mnt/
+initramfs.cpio.gz
+Bharat-linux.iso
+*.log
+*.img
+busybox/_install/
