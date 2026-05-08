@@ -4,9 +4,10 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 
-echo "Bharat-linux starting..."
-
 hostname Bharat-linux
+
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts
 
 ifconfig lo 127.0.0.1 up
 
@@ -15,3 +16,13 @@ echo "================================="
 echo " Bharat-linux system initialized "
 echo "================================="
 echo ""
+
+echo "Kernel:"
+uname -r
+
+echo ""
+echo "Memory:"
+free
+
+echo ""
+cat /etc/motd
