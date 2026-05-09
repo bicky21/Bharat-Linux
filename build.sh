@@ -7,7 +7,7 @@ echo " Building Bharat-linux "
 echo "================================="
 
 echo ""
-echo "[1/6] Building BusyBox..."
+echo "[1/7] Building BusyBox..."
 
 cd busybox
 
@@ -18,12 +18,12 @@ make install
 cd ..
 
 echo ""
-echo "[2/6] Updating root filesystem..."
+echo "[2/7] Updating root filesystem..."
 
 cp -r busybox/_install/* rootfs/
 
 echo ""
-echo "[3/6] Installing device nodes..."
+echo "[3/7] Installing device nodes..."
 
 mkdir -p rootfs/dev
 
@@ -35,19 +35,23 @@ if [ ! -e rootfs/dev/null ]; then
     sudo mknod -m 666 rootfs/dev/null c 1 3
 fi
 
+if [ ! -e rootfs/dev/ttyS0 ]; then
+    sudo mknod -m 666 rootfs/dev/ttyS0 c 4 64
+fi
+
 echo ""
-echo "[4/6] Installing custom PID1..."
+echo "[4/7] Installing custom PID1..."
 
 rm -f rootfs/sbin/init
 
 cat > rootfs/sbin/init << 'EOF'
 #!/bin/sh
 
-exec </dev/console >/dev/console 2>&1
+exec </dev/ttyS0 >/dev/ttyS0 2>&1
 
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export HOME=/root
-export TERM=linux
+export TERM=vt100
 export PS1='Bharat-linux:# '
 
 echo ""
@@ -63,27 +67,27 @@ echo "[DEBUG] PID: $$"
 echo "[DEBUG] tty:"
 tty
 
-echo "[DEBUG] launching shell..."
+echo "[DEBUG] launching interactive shell..."
 
-exec /bin/cttyhack /bin/sh
+exec setsid /bin/sh -i
 EOF
 
 chmod +x rootfs/sbin/init
 
 echo ""
-echo "[5/6] Verifying BusyBox applets..."
+echo "[5/7] Verifying BusyBox applets..."
 
-busybox/busybox --list | grep cttyhack
+busybox/busybox --list | grep setsid
 busybox/busybox --list | grep sh
 busybox/busybox --list | grep switch_root
 
 echo ""
-echo "[6/6] Building initramfs..."
+echo "[6/7] Building initramfs..."
 
 ./scripts/build-initramfs.sh
 
 echo ""
-echo "[7/6] Updating ISO..."
+echo "[7/7] Updating ISO..."
 
 cp initramfs.cpio.gz iso/boot/
 
