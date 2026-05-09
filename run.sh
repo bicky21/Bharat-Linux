@@ -3,4 +3,4 @@ qemu-system-x86_64 \
 -initrd initramfs.cpio.gz \
 -drive file=disk/bharat.img,format=raw \
 -nographic \
--append "console=ttyS0 root=/dev/sda rw noapic nolapic quiet loglevel=0"
+-append "console=ttyS0 root=/dev/sda rw noapic nolapic"

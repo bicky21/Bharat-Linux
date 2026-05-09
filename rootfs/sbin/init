@@ -1,1 +1,25 @@
-../bin/busybox
+#!/bin/sh
+
+exec </dev/ttyS0 >/dev/ttyS0 2>&1
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export HOME=/root
+export TERM=vt100
+export PS1='Bharat-linux:# '
+
+echo ""
+echo "========================================"
+echo "Bharat-linux 0.1"
+echo "By Bicky Prasad Yadav"
+echo "Custom Linux distribution engineered from scratch."
+echo "========================================"
+echo ""
+
+echo "[DEBUG] PID: $$"
+
+echo "[DEBUG] tty:"
+tty
+
+echo "[DEBUG] launching shell..."
+
+exec /bin/sh
