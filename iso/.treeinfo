@@ -1,9 +1,0 @@
-[general]
-family=Bharat-linux
-version=0.1
-name=Bharat-linux
-arch=x86_64
-
-[images-x86_64]
-kernel=boot/vmlinuz
-initrd=boot/initramfs.cpio.gz
