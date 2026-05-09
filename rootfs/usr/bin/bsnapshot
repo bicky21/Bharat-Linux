@@ -1,0 +1,23 @@
+#!/bin/sh
+
+SNAPDIR=/var/snapshots
+
+DATE=$(date +%Y%m%d-%H%M%S)
+
+SNAPSHOT=$SNAPDIR/snap-$DATE.tar.gz
+
+mkdir -p $SNAPDIR
+
+echo "[+] Creating snapshot..."
+
+tar -czf $SNAPSHOT \
+    /bin \
+    /sbin \
+    /etc \
+    /usr \
+    /home \
+    /var/log \
+    /root 2>/dev/null
+
+echo "[+] Snapshot created:"
+echo "$SNAPSHOT"

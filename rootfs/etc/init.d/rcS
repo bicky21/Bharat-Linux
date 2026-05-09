@@ -4,16 +4,12 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 
-dmesg -n 1
-
 hostname Bharat-linux
 
-mkdir -p /dev/pts
-mount -t devpts devpts /dev/pts
-
-for SERVICE in /etc/services/enabled/*
-do
-    sh $SERVICE start
-done
-
-clear
+echo ""
+echo "========================================"
+echo "Bharat-linux 0.1"
+echo "By Bicky Prasad Yadav"
+echo "Custom Linux distribution engineered from scratch."
+echo "========================================"
+echo ""

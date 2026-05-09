@@ -4,8 +4,86 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 
-mkdir -p /mnt
+clear
 
-mount /dev/sda /mnt
+echo ""
+echo "[+] Initializing Bharat-linux..."
+echo ""
 
-exec switch_root /mnt /sbin/init
+mkdir -p /newroot
+
+echo "[+] Waiting for block devices..."
+sleep 3
+echo ""
+
+ROOTDEV=""
+
+echo "[+] Detecting root filesystem..."
+echo ""
+
+echo "[+] blkid output:"
+blkid
+echo ""
+
+for DEV in $(blkid | cut -d: -f1); do
+
+    echo "[+] Checking device: $DEV"
+
+    TYPE=$(blkid "$DEV" 2>/dev/null)
+
+    echo "[+] Filesystem info: $TYPE"
+
+    echo "$TYPE" | grep -q 'TYPE="ext4"'
+
+    if [ $? -eq 0 ]; then
+
+        ROOTDEV="$DEV"
+
+        echo "[+] Selected root device: $ROOTDEV"
+
+        break
+
+    fi
+
+done
+
+echo ""
+echo "[+] Final ROOTDEV: $ROOTDEV"
+echo ""
+
+if [ -z "$ROOTDEV" ]; then
+
+    echo "[!] No installed Bharat-linux system detected"
+    echo ""
+
+    exec sh
+
+fi
+
+echo "[+] Mounting root filesystem..."
+echo ""
+
+mount -t ext4 "$ROOTDEV" /newroot
+
+if [ $? -ne 0 ]; then
+
+    echo "[!] Failed to mount root filesystem"
+    echo ""
+
+    exec sh
+
+fi
+
+mkdir -p /newroot/proc
+mkdir -p /newroot/sys
+mkdir -p /newroot/dev
+
+mount --move /proc /newroot/proc
+mount --move /sys /newroot/sys
+mount --move /dev /newroot/dev
+
+echo ""
+echo "[+] Switching to real root..."
+echo ""
+
+exec setsid cttyhack /bin/switch_root /newroot /sbin/init

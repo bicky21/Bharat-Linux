@@ -1,0 +1,30 @@
+#!/bin/sh
+
+SNAPSHOT=$1
+
+if [ -z "$SNAPSHOT" ]; then
+    echo "Usage: brollback <snapshot>"
+    exit 1
+fi
+
+if [ ! -f "$SNAPSHOT" ]; then
+    echo "Snapshot not found"
+    exit 1
+fi
+
+echo "[!] WARNING"
+echo "This will overwrite current system."
+
+printf "Continue? (y/n): "
+read CONFIRM
+
+if [ "$CONFIRM" != "y" ]; then
+    exit 0
+fi
+
+echo "[+] Restoring snapshot..."
+
+tar -xzf $SNAPSHOT -C /
+
+echo "[+] Rollback completed"
+echo "[!] Reboot system"

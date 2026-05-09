@@ -1,0 +1,6 @@
+#!/bin/sh
+
+echo "Available snapshots:"
+echo ""
+
+ls -lh /var/snapshots
