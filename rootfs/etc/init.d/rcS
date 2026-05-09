@@ -1,9 +1,5 @@
 #!/bin/sh
 
-mount -t proc proc /proc
-mount -t sysfs sysfs /sys
-mount -t devtmpfs devtmpfs /dev
-
 hostname Bharat-linux
 
 echo ""
@@ -13,3 +9,4 @@ echo "By Bicky Prasad Yadav"
 echo "Custom Linux distribution engineered from scratch."
 echo "========================================"
 echo ""
+

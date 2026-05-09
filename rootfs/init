@@ -86,4 +86,4 @@ echo ""
 echo "[+] Switching to real root..."
 echo ""
 
-exec setsid cttyhack /bin/switch_root /newroot /sbin/init
+exec switch_root /newroot /sbin/init
