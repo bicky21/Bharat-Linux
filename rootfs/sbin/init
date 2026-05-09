@@ -1,17 +1,1 @@
-#!/bin/sh
-
-exec </dev/ttyS0 >/dev/ttyS0 2>&1
-echo ""
-echo "========================================"
-echo "Bharat-linux 0.1"
-echo "By Bicky Prasad Yadav"
-echo "Custom Linux distribution engineered from scratch."
-echo "========================================"
-echo ""
-
-
-while true; do
-    echo -n "Bharat-linux:# "
-    read cmd
-    sh -c "$cmd"
-done
+../bin/busybox

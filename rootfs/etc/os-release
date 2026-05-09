@@ -1,9 +1,0 @@
-NAME="Bharat-linux"
-VERSION="0.1"
-ID=bharat
-ID_LIKE=linux
-PRETTY_NAME="Bharat-linux 0.1"
-VERSION_ID="0.1"
-HOME_URL="https://github.com/bicky21/Bharat-Linux"
-SUPPORT_URL="https://github.com/bicky21/Bharat-Linux/issues"
-BUG_REPORT_URL="https://github.com/bicky21/Bharat-Linux/issues"

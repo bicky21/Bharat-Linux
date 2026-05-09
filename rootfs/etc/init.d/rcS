@@ -1,12 +1,10 @@
 #!/bin/sh
 
-hostname Bharat-linux
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
 
 echo ""
 echo "========================================"
-echo "Bharat-linux 0.1"
-echo "By Bicky Prasad Yadav"
-echo "Custom Linux distribution engineered from scratch."
+echo " Bharat-linux 0.1 "
 echo "========================================"
 echo ""
-
