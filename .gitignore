@@ -11,3 +11,6 @@ logs/
 *.iso
 rootfs/*
 !rootfs/init
+!rootfs/etc/
+!rootfs/etc/passwd
+!rootfs/etc/group
