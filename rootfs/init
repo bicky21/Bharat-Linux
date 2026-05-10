@@ -1,0 +1,10 @@
+#!/bin/sh
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+
+echo "================================="
+echo " Welcome to Bharat Linux "
+echo "================================="
+
+exec /bin/sh

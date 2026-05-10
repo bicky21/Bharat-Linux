@@ -3,10 +3,11 @@ sources/binutils-*
 sources/*-build
 tools/
 sysroot/
-rootfs/
 build/
 logs/
 *.o
 *.a
 *.so
 *.iso
+rootfs/*
+!rootfs/init
