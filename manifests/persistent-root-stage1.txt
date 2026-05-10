@@ -1,0 +1,3 @@
+Persistent writable ext4 root filesystem operational
+switch_root transition verified
+Disk-backed Bharat Linux runtime validated
