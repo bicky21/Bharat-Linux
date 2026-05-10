@@ -17,3 +17,17 @@ rootfs/*
 sources/
 !rootfs/etc/hostname
 !rootfs/etc/fstab
+
+# Disk images
+*.img
+*.qcow2
+*.vdi
+*.vmdk
+
+# Build artifacts
+*.o
+*.a
+*.so
+
+# Temporary files
+*.swp
