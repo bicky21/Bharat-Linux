@@ -1,0 +1,6 @@
+Bharat Linux autonomous boot operational
+GRUB BIOS boot chain verified
+Persistent writable ext4 root filesystem active
+switch_root transition successful
+BusyBox userspace operational
+Kernel/initramfs integration stable
