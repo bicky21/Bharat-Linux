@@ -1,0 +1,3 @@
+Initial Bharat Linux root filesystem hierarchy created
+Core FHS directories initialized
+Temporary directory permissions configured
