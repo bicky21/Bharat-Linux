@@ -14,3 +14,4 @@ rootfs/*
 !rootfs/etc/
 !rootfs/etc/passwd
 !rootfs/etc/group
+sources/
