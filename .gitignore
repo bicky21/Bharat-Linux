@@ -15,3 +15,5 @@ rootfs/*
 !rootfs/etc/passwd
 !rootfs/etc/group
 sources/
+!rootfs/etc/hostname
+!rootfs/etc/fstab
