@@ -1,50 +1,13 @@
-sources/*.tar.*
-sources/binutils-*
-sources/*-build
-tools/
-sysroot/
-build/
-logs/
-*.o
-*.a
-*.so
-*.iso
-rootfs/*
-!rootfs/init
-!rootfs/etc/
-!rootfs/etc/passwd
-!rootfs/etc/group
-sources/
-!rootfs/etc/hostname
-!rootfs/etc/fstab
-
-# Disk images
-*.img
-*.qcow2
-*.vdi
-*.vmdk
-
-# Build artifacts
-*.o
-*.a
-*.so
-
-# Temporary files
-*.swp
-
-# Mounted live filesystem
 mnt/
-
-# Disk images
+checkpoints/
+images/
+tools/
 *.img
-*.qcow2
-*.vdi
-*.vmdk
-
-# Build artifacts
+*.iso
 *.o
 *.a
 *.so
-
-# Temporary files
-*.swp
+*.la
+*.lo
+*.tmp
+*.log

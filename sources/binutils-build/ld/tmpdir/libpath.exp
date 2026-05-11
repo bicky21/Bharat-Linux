@@ -1,0 +1,1 @@
+set libpath "=/bharat-linux/tools/x86_64-pc-linux-gnu/lib64 =/bharat-linux/tools/lib64 =/usr/local/lib64 =/lib64 =/usr/lib64 =/bharat-linux/tools/x86_64-pc-linux-gnu/lib =/bharat-linux/tools/lib =/usr/local/lib =/lib =/usr/lib"
