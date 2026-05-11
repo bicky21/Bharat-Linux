@@ -54,6 +54,27 @@ int main() {
 
         if (pid == 0) {
 
+            for (int i = 0; argv[i] != NULL; i++) {
+
+                if (strcmp(argv[i], ">") == 0) {
+
+                    argv[i] = NULL;
+
+                    FILE *f = fopen(argv[i + 1], "w");
+
+                    if (!f) {
+                        printf("redirection failed\n");
+                        exit(1);
+                    }
+
+                    dup2(fileno(f), 1);
+
+                    fclose(f);
+
+                    break;
+                }
+            }
+
             char path[256];
 
             snprintf(path, sizeof(path), "/bin/%s", argv[0]);
