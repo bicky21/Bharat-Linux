@@ -23,30 +23,44 @@ int main() {
 
         if (strcmp(cmd, "exit") == 0)
             break;
-       if (strncmp(cmd, "cd ", 3) == 0) {
 
-    char *path = cmd + 3;
+        if (strncmp(cmd, "cd ", 3) == 0) {
 
-    if (chdir(path) != 0) {
-        printf("cd failed\n");
-    }
+            char *path = cmd + 3;
 
-    continue;
-}
+            if (chdir(path) != 0) {
+                printf("cd failed\n");
+            }
+
+            continue;
+        }
+
+        char *argv[16];
+
+        int argc = 0;
+
+        char *token = strtok(cmd, " ");
+
+        while (token != NULL && argc < 15) {
+
+            argv[argc++] = token;
+
+            token = strtok(NULL, " ");
+        }
+
+        argv[argc] = NULL;
 
         pid_t pid = fork();
 
         if (pid == 0) {
 
-            char path[300];
+            char path[256];
 
-            snprintf(path, sizeof(path), "/bin/%s", cmd);
+            snprintf(path, sizeof(path), "/bin/%s", argv[0]);
 
-            char *args[] = {path, NULL};
+            execve(path, argv, NULL);
 
-            execve(path, args, NULL);
-
-            printf("Command not found: %s\n", cmd);
+            printf("Command not found: %s\n", argv[0]);
 
             exit(1);
         }
