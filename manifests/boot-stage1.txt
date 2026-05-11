@@ -1,5 +1,0 @@
-Bharat Linux successfully booted in QEMU
-Kernel and initramfs execution verified
-BusyBox userspace operational
-proc/sys mounts functional
-Interactive shell confirmed

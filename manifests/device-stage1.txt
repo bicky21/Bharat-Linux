@@ -1,3 +1,0 @@
-Essential device nodes created
-/dev/console initialized
-/dev/null initialized

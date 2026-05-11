@@ -1,4 +1,0 @@
-Initial Bharat Linux init process created
-proc and sysfs mount support added
-Interactive shell launch configured
-

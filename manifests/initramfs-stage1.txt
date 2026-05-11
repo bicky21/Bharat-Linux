@@ -1,3 +1,0 @@
-Initial Bharat Linux initramfs created
-BusyBox shell integrated
-Early userspace boot pipeline prepared

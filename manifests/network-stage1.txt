@@ -1,5 +1,0 @@
-Persistent networking operational
-eth0 auto-initialization configured
-Routing and DNS functional
-Internet connectivity verified
-
