@@ -2,9 +2,10 @@
 #include <unistd.h>
 #include <sys/mount.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-#include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <string.h>
+
 int main() {
 
     mkdir("/proc", 0555);
@@ -20,18 +21,23 @@ int main() {
 
     while (1) {
 
-        char cmd[256];
+        pid_t pid = fork();
 
-        printf("bharat# ");
-        fflush(stdout);
+        if (pid == 0) {
 
-        if (!fgets(cmd, sizeof(cmd), stdin))
-            continue;
+            char *args[] = {"/bin/sh", NULL};
 
-        if (cmd[0] == '\n')
-            continue;
+            execve("/bin/sh", args, NULL);
 
-        system(cmd);
+            printf("Failed to launch shell\n");
+
+            return 1;
+        }
+
+        else {
+
+            wait(NULL);
+        }
     }
 
     return 0;
