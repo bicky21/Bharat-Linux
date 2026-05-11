@@ -23,6 +23,16 @@ int main() {
 
         if (strcmp(cmd, "exit") == 0)
             break;
+       if (strncmp(cmd, "cd ", 3) == 0) {
+
+    char *path = cmd + 3;
+
+    if (chdir(path) != 0) {
+        printf("cd failed\n");
+    }
+
+    continue;
+}
 
         pid_t pid = fork();
 
