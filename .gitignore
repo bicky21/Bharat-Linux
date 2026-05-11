@@ -31,3 +31,20 @@ sources/
 
 # Temporary files
 *.swp
+
+# Mounted live filesystem
+mnt/
+
+# Disk images
+*.img
+*.qcow2
+*.vdi
+*.vmdk
+
+# Build artifacts
+*.o
+*.a
+*.so
+
+# Temporary files
+*.swp
