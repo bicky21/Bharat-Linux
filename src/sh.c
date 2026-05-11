@@ -2,6 +2,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 
 int main() {
 
@@ -17,24 +18,32 @@ int main() {
 
         cmd[strcspn(cmd, "\n")] = 0;
 
-        if (strcmp(cmd, "exit") == 0) {
-            break;
-        }
-
-        else if (strcmp(cmd, "hello") == 0) {
-            printf("Welcome to Bharat-linux\n");
-        }
-
-        else if (strcmp(cmd, "clear") == 0) {
-            printf("\033[2J\033[H");
-        }
-
-        else if (strcmp(cmd, "") == 0) {
+        if (strcmp(cmd, "") == 0)
             continue;
+
+        if (strcmp(cmd, "exit") == 0)
+            break;
+
+        pid_t pid = fork();
+
+        if (pid == 0) {
+
+            char path[300];
+
+            snprintf(path, sizeof(path), "/bin/%s", cmd);
+
+            char *args[] = {path, NULL};
+
+            execve(path, args, NULL);
+
+            printf("Command not found: %s\n", cmd);
+
+            exit(1);
         }
 
         else {
-            printf("Unknown command: %s\n", cmd);
+
+            wait(NULL);
         }
     }
 
