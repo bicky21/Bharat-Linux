@@ -3,8 +3,16 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <signal.h>
+
+void cleanup(int sig) {
+
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+}
 
 int main() {
+
+    signal(SIGCHLD, cleanup);
 
     char cmd[256];
 
