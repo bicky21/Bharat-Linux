@@ -14,6 +14,8 @@ int main() {
 
     signal(SIGCHLD, cleanup);
 
+    setenv("PATH", "/bin:/usr/bin", 1);
+
     char cmd[256];
 
     while (1) {
@@ -80,11 +82,7 @@ int main() {
 
                 argv1[argc1] = NULL;
 
-                char path[256];
-
-                snprintf(path, sizeof(path), "/bin/%s", argv1[0]);
-
-                execve(path, argv1, NULL);
+                execvp(argv1[0], argv1);
 
                 exit(1);
             }
@@ -111,11 +109,7 @@ int main() {
 
                 argv2[argc2] = NULL;
 
-                char path[256];
-
-                snprintf(path, sizeof(path), "/bin/%s", argv2[0]);
-
-                execve(path, argv2, NULL);
+                execvp(argv2[0], argv2);
 
                 exit(1);
             }
@@ -182,11 +176,7 @@ int main() {
                 }
             }
 
-            char path[256];
-
-            snprintf(path, sizeof(path), "/bin/%s", argv[0]);
-
-            execve(path, argv, NULL);
+            execvp(argv[0], argv);
 
             printf("Command not found: %s\n", argv[0]);
 
