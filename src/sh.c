@@ -302,7 +302,6 @@ void execute_script(char *filename) {
 
     fclose(script);
 }
-
 int main() {
 
     signal(SIGCHLD, cleanup);
@@ -324,13 +323,28 @@ int main() {
         if (strcmp(cmd, "exit") == 0)
             break;
 
-        FILE *script = fopen(cmd, "r");
+        FILE *script = fopen(cmd, "rb");
 
         if (script) {
 
+            char magic[4];
+
+            fread(magic, 1, 4, script);
+
             fclose(script);
 
-            execute_script(cmd);
+            if (magic[0] == 0x7f &&
+                magic[1] == 'E' &&
+                magic[2] == 'L' &&
+                magic[3] == 'F') {
+
+                execute_command(cmd);
+            }
+
+            else {
+
+                execute_script(cmd);
+            }
 
             continue;
         }
