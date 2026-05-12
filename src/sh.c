@@ -136,6 +136,17 @@ int main() {
 
         argv[argc] = NULL;
 
+        int background = 0;
+
+        if (argc > 0 && strcmp(argv[argc - 1], "&") == 0) {
+
+            background = 1;
+
+            argv[argc - 1] = NULL;
+
+            argc--;
+        }
+
         pid_t pid = fork();
 
         if (pid == 0) {
@@ -149,7 +160,9 @@ int main() {
                     FILE *f = fopen(argv[i + 1], "w");
 
                     if (!f) {
+
                         printf("redirection failed\n");
+
                         exit(1);
                     }
 
@@ -174,7 +187,15 @@ int main() {
 
         else {
 
-            wait(NULL);
+            if (!background) {
+
+                wait(NULL);
+            }
+
+            else {
+
+                printf("[background pid %d]\n", pid);
+            }
         }
     }
 
