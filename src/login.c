@@ -9,11 +9,13 @@ int main() {
     char password[64];
 
     printf("login: ");
+
     fgets(username, sizeof(username), stdin);
 
     username[strcspn(username, "\n")] = 0;
 
     printf("password: ");
+
     fgets(password, sizeof(password), stdin);
 
     password[strcspn(password, "\n")] = 0;
@@ -42,6 +44,8 @@ int main() {
 
         if (strcmp(user, username) == 0 &&
             strcmp(pass, password) == 0) {
+
+            setenv("USER", username, 1);
 
             printf("Welcome %s\n", username);
 
