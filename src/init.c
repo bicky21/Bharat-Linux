@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <string.h>
 
 int main() {
 
@@ -16,7 +15,7 @@ int main() {
 
     printf("\n");
     printf("=================================\n");
-    printf("      Bharat-linux CLI v0.1     \n");
+    printf("        Bharat-linux CLI        \n");
     printf("=================================\n");
 
     while (1) {
@@ -25,11 +24,11 @@ int main() {
 
         if (pid == 0) {
 
-            char *args[] = {"/bin/sh", NULL};
+            char *args[] = {"/bin/login", NULL};
 
-            execve("/bin/sh", args, NULL);
+            execve("/bin/login", args, NULL);
 
-            printf("Failed to launch shell\n");
+            printf("Failed to launch login\n");
 
             return 1;
         }
