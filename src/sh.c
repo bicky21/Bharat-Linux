@@ -5,9 +5,160 @@
 #include <sys/wait.h>
 #include <signal.h>
 
+#define MAX_VARS 32
+
+struct Variable {
+
+    char name[64];
+    char value[128];
+};
+
+struct Variable vars[MAX_VARS];
+
+int var_count = 0;
+
 void cleanup(int sig) {
 
     while (waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+char* get_var(char *name) {
+
+    for (int i = 0; i < var_count; i++) {
+
+        if (strcmp(vars[i].name, name) == 0)
+            return vars[i].value;
+    }
+
+    return NULL;
+}
+
+void set_var(char *name, char *value) {
+
+    for (int i = 0; i < var_count; i++) {
+
+        if (strcmp(vars[i].name, name) == 0) {
+
+            strcpy(vars[i].value, value);
+
+            return;
+        }
+    }
+
+    if (var_count < MAX_VARS) {
+
+        strcpy(vars[var_count].name, name);
+
+        strcpy(vars[var_count].value, value);
+
+        var_count++;
+    }
+}
+
+void execute_command(char *cmd) {
+
+    cmd[strcspn(cmd, "\n")] = 0;
+
+    if (strcmp(cmd, "") == 0)
+        return;
+
+    char *argv[16];
+
+    int argc = 0;
+
+    char *token = strtok(cmd, " ");
+
+    while (token != NULL && argc < 15) {
+
+        if (token[0] == '$') {
+
+            char *value = get_var(token + 1);
+
+            if (value)
+                token = value;
+        }
+
+        argv[argc++] = token;
+
+        token = strtok(NULL, " ");
+    }
+
+    argv[argc] = NULL;
+
+    if (argc == 0)
+        return;
+
+    if (strcmp(argv[0], "set") == 0) {
+
+        if (argc >= 3) {
+
+            set_var(argv[1], argv[2]);
+        }
+
+        return;
+    }
+
+    if (strcmp(argv[0], "cd") == 0) {
+
+        if (argc > 1) {
+
+            if (chdir(argv[1]) != 0)
+                printf("cd failed\n");
+        }
+
+        return;
+    }
+
+    int background = 0;
+
+    if (argc > 0 && strcmp(argv[argc - 1], "&") == 0) {
+
+        background = 1;
+
+        argv[argc - 1] = NULL;
+    }
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        for (int i = 0; argv[i] != NULL; i++) {
+
+            if (strcmp(argv[i], ">") == 0) {
+
+                argv[i] = NULL;
+
+                FILE *f = fopen(argv[i + 1], "w");
+
+                if (!f) {
+
+                    printf("redirection failed\n");
+
+                    exit(1);
+                }
+
+                dup2(fileno(f), 1);
+
+                fclose(f);
+
+                break;
+            }
+        }
+
+        execvp(argv[0], argv);
+
+        printf("Command not found: %s\n", argv[0]);
+
+        exit(1);
+    }
+
+    else {
+
+        if (!background)
+            wait(NULL);
+        else
+            printf("[background pid %d]\n", pid);
+    }
 }
 
 int main() {
@@ -28,173 +179,26 @@ int main() {
 
         cmd[strcspn(cmd, "\n")] = 0;
 
-        if (strcmp(cmd, "") == 0)
-            continue;
-
         if (strcmp(cmd, "exit") == 0)
             break;
 
-        if (strncmp(cmd, "cd ", 3) == 0) {
+        FILE *script = fopen(cmd, "r");
 
-            char *path = cmd + 3;
+        if (script != NULL) {
 
-            if (chdir(path) != 0)
-                printf("cd failed\n");
+            char line[256];
+
+            while (fgets(line, sizeof(line), script)) {
+
+                execute_command(line);
+            }
+
+            fclose(script);
 
             continue;
         }
 
-        char *pipe_pos = strchr(cmd, '|');
-
-        if (pipe_pos != NULL) {
-
-            *pipe_pos = '\0';
-
-            char *cmd1 = cmd;
-            char *cmd2 = pipe_pos + 1;
-
-            while (*cmd2 == ' ')
-                cmd2++;
-
-            int fd[2];
-
-            pipe(fd);
-
-            pid_t p1 = fork();
-
-            if (p1 == 0) {
-
-                dup2(fd[1], 1);
-
-                close(fd[0]);
-                close(fd[1]);
-
-                char *argv1[16];
-                int argc1 = 0;
-
-                char *token = strtok(cmd1, " ");
-
-                while (token && argc1 < 15) {
-
-                    argv1[argc1++] = token;
-                    token = strtok(NULL, " ");
-                }
-
-                argv1[argc1] = NULL;
-
-                execvp(argv1[0], argv1);
-
-                exit(1);
-            }
-
-            pid_t p2 = fork();
-
-            if (p2 == 0) {
-
-                dup2(fd[0], 0);
-
-                close(fd[0]);
-                close(fd[1]);
-
-                char *argv2[16];
-                int argc2 = 0;
-
-                char *token = strtok(cmd2, " ");
-
-                while (token && argc2 < 15) {
-
-                    argv2[argc2++] = token;
-                    token = strtok(NULL, " ");
-                }
-
-                argv2[argc2] = NULL;
-
-                execvp(argv2[0], argv2);
-
-                exit(1);
-            }
-
-            close(fd[0]);
-            close(fd[1]);
-
-            wait(NULL);
-            wait(NULL);
-
-            continue;
-        }
-
-        char *argv[16];
-
-        int argc = 0;
-
-        char *token = strtok(cmd, " ");
-
-        while (token != NULL && argc < 15) {
-
-            argv[argc++] = token;
-
-            token = strtok(NULL, " ");
-        }
-
-        argv[argc] = NULL;
-
-        int background = 0;
-
-        if (argc > 0 && strcmp(argv[argc - 1], "&") == 0) {
-
-            background = 1;
-
-            argv[argc - 1] = NULL;
-
-            argc--;
-        }
-
-        pid_t pid = fork();
-
-        if (pid == 0) {
-
-            for (int i = 0; argv[i] != NULL; i++) {
-
-                if (strcmp(argv[i], ">") == 0) {
-
-                    argv[i] = NULL;
-
-                    FILE *f = fopen(argv[i + 1], "w");
-
-                    if (!f) {
-
-                        printf("redirection failed\n");
-
-                        exit(1);
-                    }
-
-                    dup2(fileno(f), 1);
-
-                    fclose(f);
-
-                    break;
-                }
-            }
-
-            execvp(argv[0], argv);
-
-            printf("Command not found: %s\n", argv[0]);
-
-            exit(1);
-        }
-
-        else {
-
-            if (!background) {
-
-                wait(NULL);
-            }
-
-            else {
-
-                printf("[background pid %d]\n", pid);
-            }
-        }
+        execute_command(cmd);
     }
 
     return 0;
