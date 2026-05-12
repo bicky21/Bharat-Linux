@@ -55,6 +55,42 @@ void set_var(char *name, char *value) {
     }
 }
 
+void execute_command(char *cmd);
+
+void execute_script(char *filename) {
+
+    FILE *script = fopen(filename, "r");
+
+    if (!script)
+        return;
+
+    char line[256];
+
+    int condition = 1;
+
+    while (fgets(line, sizeof(line), script)) {
+
+        line[strcspn(line, "\n")] = 0;
+
+        if (strncmp(line, "if EXIST ", 9) == 0) {
+
+            char *file = line + 9;
+
+            if (access(file, F_OK) == 0)
+                condition = 1;
+            else
+                condition = 0;
+
+            continue;
+        }
+
+        if (condition)
+            execute_command(line);
+    }
+
+    fclose(script);
+}
+
 void execute_command(char *cmd) {
 
     cmd[strcspn(cmd, "\n")] = 0;
@@ -90,10 +126,8 @@ void execute_command(char *cmd) {
 
     if (strcmp(argv[0], "set") == 0) {
 
-        if (argc >= 3) {
-
+        if (argc >= 3)
             set_var(argv[1], argv[2]);
-        }
 
         return;
     }
@@ -186,14 +220,9 @@ int main() {
 
         if (script != NULL) {
 
-            char line[256];
-
-            while (fgets(line, sizeof(line), script)) {
-
-                execute_command(line);
-            }
-
             fclose(script);
+
+            execute_script(cmd);
 
             continue;
         }
