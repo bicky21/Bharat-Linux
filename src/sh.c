@@ -5,94 +5,65 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#define MAX_VARS 32
-#define MAX_FUNCTIONS 16
-#define MAX_LINES 64
-
-struct Variable {
-
-    char name[64];
-    char value[128];
-};
-
-struct Function {
-
-    char name[64];
-    char lines[MAX_LINES][256];
-    int line_count;
-};
-
-struct Variable vars[MAX_VARS];
-struct Function funcs[MAX_FUNCTIONS];
-
-int var_count = 0;
-int func_count = 0;
-
 void cleanup(int sig) {
 
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-char* get_var(char *name) {
+void get_history_path(char *path) {
 
-    for (int i = 0; i < var_count; i++) {
+    char *home = getenv("HOME");
 
-        if (strcmp(vars[i].name, name) == 0)
-            return vars[i].value;
-    }
+    if (!home)
+        home = "/";
 
-    return NULL;
+    snprintf(path, 256, "%s/.history", home);
 }
 
-void set_var(char *name, char *value) {
+void add_history(char *cmd) {
 
-    for (int i = 0; i < var_count; i++) {
+    char path[256];
 
-        if (strcmp(vars[i].name, name) == 0) {
+    get_history_path(path);
 
-            strcpy(vars[i].value, value);
-            return;
-        }
-    }
-
-    strcpy(vars[var_count].name, name);
-    strcpy(vars[var_count].value, value);
-
-    var_count++;
-}
-
-struct Function* find_function(char *name) {
-
-    for (int i = 0; i < func_count; i++) {
-
-        if (strcmp(funcs[i].name, name) == 0)
-            return &funcs[i];
-    }
-
-    return NULL;
-}
-
-void execute_command(char *cmd);
-
-void execute_function(char *name) {
-
-    struct Function *f = find_function(name);
+    FILE *f = fopen(path, "a");
 
     if (!f)
         return;
 
-    for (int i = 0; i < f->line_count; i++) {
+    fprintf(f, "%s\n", cmd);
 
-        execute_command(f->lines[i]);
-    }
+    fclose(f);
 }
 
-void execute_command(char *cmd) {
+void show_history() {
 
-    cmd[strcspn(cmd, "\n")] = 0;
+    char path[256];
 
-    if (strcmp(cmd, "") == 0)
+    get_history_path(path);
+
+    FILE *f = fopen(path, "r");
+
+    if (!f) {
+
+        printf("No history\n");
+
         return;
+    }
+
+    char line[256];
+
+    int n = 1;
+
+    while (fgets(line, sizeof(line), f)) {
+
+        printf("%d %s", n++, line);
+    }
+
+    fclose(f);
+}
+
+void execute(char *cmd) {
 
     char buffer[256];
 
@@ -106,14 +77,6 @@ void execute_command(char *cmd) {
 
     while (token && argc < 31) {
 
-        if (token[0] == '$') {
-
-            char *value = get_var(token + 1);
-
-            if (value)
-                token = value;
-        }
-
         argv[argc++] = token;
 
         token = strtok(NULL, " ");
@@ -124,27 +87,17 @@ void execute_command(char *cmd) {
     if (argc == 0)
         return;
 
-    if (strcmp(argv[0], "set") == 0) {
-
-        if (argc >= 3)
-            set_var(argv[1], argv[2]);
-
-        return;
-    }
-
     if (strcmp(argv[0], "cd") == 0) {
 
-        if (argc >= 2)
+        if (argc > 1)
             chdir(argv[1]);
 
         return;
     }
 
-    struct Function *f = find_function(argv[0]);
+    if (strcmp(argv[0], "history") == 0) {
 
-    if (f) {
-
-        execute_function(argv[0]);
+        show_history();
 
         return;
     }
@@ -162,35 +115,6 @@ void execute_command(char *cmd) {
 
     if (pid == 0) {
 
-        for (int i = 0; argv[i] != NULL; i++) {
-
-            if (strcmp(argv[i], ">") == 0) {
-
-                argv[i] = NULL;
-
-                FILE *f = fopen(argv[i + 1], "w");
-
-                dup2(fileno(f), 1);
-
-                fclose(f);
-
-                break;
-            }
-
-            if (strcmp(argv[i], ">>") == 0) {
-
-                argv[i] = NULL;
-
-                FILE *f = fopen(argv[i + 1], "a");
-
-                dup2(fileno(f), 1);
-
-                fclose(f);
-
-                break;
-            }
-        }
-
         execvp(argv[0], argv);
 
         printf("Command not found: %s\n", argv[0]);
@@ -200,108 +124,27 @@ void execute_command(char *cmd) {
 
     else {
 
-        if (!background)
-            wait(NULL);
+        if (!background) {
+
+            waitpid(pid, NULL, 0);
+        }
+
+        else {
+
+            printf("[background pid %d]\n", pid);
+
+            FILE *jf = fopen("/run/jobs", "a");
+
+            if (jf) {
+
+                fprintf(jf, "%d %s\n", pid, argv[0]);
+
+                fclose(jf);
+            }
+        }
     }
 }
 
-void execute_script(char *filename) {
-
-    FILE *script = fopen(filename, "r");
-
-    if (!script)
-        return;
-
-    char line[256];
-
-    int condition = 1;
-
-    while (fgets(line, sizeof(line), script)) {
-
-        line[strcspn(line, "\n")] = 0;
-
-        if (strncmp(line, "if EXIST ", 9) == 0) {
-
-            char *file = line + 9;
-
-            if (access(file, F_OK) == 0)
-                condition = 1;
-            else
-                condition = 0;
-
-            continue;
-        }
-
-        if (strcmp(line, "else") == 0) {
-
-            condition = !condition;
-
-            continue;
-        }
-
-        if (strcmp(line, "endif") == 0) {
-
-            condition = 1;
-
-            continue;
-        }
-
-        if (strncmp(line, "loop ", 5) == 0) {
-
-            int count = atoi(line + 5);
-
-            char loop_lines[MAX_LINES][256];
-
-            int lc = 0;
-
-            while (fgets(line, sizeof(line), script)) {
-
-                line[strcspn(line, "\n")] = 0;
-
-                if (strcmp(line, "endloop") == 0)
-                    break;
-
-                strcpy(loop_lines[lc++], line);
-            }
-
-            for (int i = 0; i < count; i++) {
-
-                for (int j = 0; j < lc; j++) {
-
-                    execute_command(loop_lines[j]);
-                }
-            }
-
-            continue;
-        }
-
-        if (strncmp(line, "function ", 9) == 0) {
-
-            struct Function *f = &funcs[func_count++];
-
-            strcpy(f->name, line + 9);
-
-            f->line_count = 0;
-
-            while (fgets(line, sizeof(line), script)) {
-
-                line[strcspn(line, "\n")] = 0;
-
-                if (strcmp(line, "end") == 0)
-                    break;
-
-                strcpy(f->lines[f->line_count++], line);
-            }
-
-            continue;
-        }
-
-        if (condition)
-            execute_command(line);
-    }
-
-    fclose(script);
-}
 int main() {
 
     signal(SIGCHLD, cleanup);
@@ -313,6 +156,7 @@ int main() {
     while (1) {
 
         printf("bharat-shell$ ");
+
         fflush(stdout);
 
         if (!fgets(cmd, sizeof(cmd), stdin))
@@ -320,36 +164,33 @@ int main() {
 
         cmd[strcspn(cmd, "\n")] = 0;
 
+        if (strcmp(cmd, "") == 0)
+            continue;
+
+        add_history(cmd);
+
         if (strcmp(cmd, "exit") == 0)
             break;
 
-        FILE *script = fopen(cmd, "rb");
+        char *chain = strstr(cmd, "&&");
 
-        if (script) {
+        if (chain) {
 
-            char magic[4];
+            *chain = 0;
 
-            fread(magic, 1, 4, script);
+            char *cmd2 = chain + 2;
 
-            fclose(script);
+            while (*cmd2 == ' ')
+                cmd2++;
 
-            if (magic[0] == 0x7f &&
-                magic[1] == 'E' &&
-                magic[2] == 'L' &&
-                magic[3] == 'F') {
+            execute(cmd);
 
-                execute_command(cmd);
-            }
-
-            else {
-
-                execute_script(cmd);
-            }
+            execute(cmd2);
 
             continue;
         }
 
-        execute_command(cmd);
+        execute(cmd);
     }
 
     return 0;

@@ -1,0 +1,1 @@
+echo Bharat service started >> /var/log/services.log

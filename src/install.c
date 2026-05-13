@@ -71,6 +71,14 @@ int main(int argc, char *argv[]) {
     }
 
     fclose(pkg);
+	
+    FILE *db = fopen("/packages/installed.db", "a");
 
+if (db) {
+
+    fprintf(db, "%s\n", argv[1]);
+
+    fclose(db);
+}
     return 0;
 }
