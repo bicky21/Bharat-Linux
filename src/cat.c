@@ -1,31 +1,37 @@
 #include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include "security.h"
 
 int main(int argc, char *argv[]) {
 
     if (argc < 2) {
+
         printf("Usage: cat <file>\n");
+
         return 1;
     }
 
-    int fd = open(argv[1], O_RDONLY);
+    if (!allowed(argv[1])) {
 
-    if (fd < 0) {
+        printf("Permission denied\n");
+
+        return 1;
+    }
+
+    FILE *f = fopen(argv[1], "r");
+
+    if (!f) {
+
         printf("Cannot open file\n");
+
         return 1;
     }
 
-    char buffer[256];
+    char c;
 
-    int bytes;
+    while ((c = fgetc(f)) != EOF)
+        putchar(c);
 
-    while ((bytes = read(fd, buffer, sizeof(buffer))) > 0) {
-
-        write(1, buffer, bytes);
-    }
-
-    close(fd);
+    fclose(f);
 
     return 0;
 }

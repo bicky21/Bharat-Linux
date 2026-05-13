@@ -3,6 +3,27 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+void load_profile(char *user) {
+
+    char path[128];
+
+    snprintf(path, sizeof(path), "/home/%s/.profile", user);
+
+    FILE *f = fopen(path, "r");
+
+    if (!f)
+        return;
+
+    char line[256];
+
+    while (fgets(line, sizeof(line), f)) {
+
+        system(line);
+    }
+
+    fclose(f);
+}
+
 int main() {
 
     char username[64];
@@ -47,15 +68,21 @@ int main() {
 
             setenv("USER", username, 1);
 
+            char home[128];
+
+            snprintf(home, sizeof(home), "/home/%s", username);
+
+            setenv("HOME", home, 1);
+
+            chdir(home);
+
+            load_profile(username);
+
             printf("Welcome %s\n", username);
 
             execl("/bin/sh", "/bin/sh", NULL);
 
-            printf("Shell launch failed\n");
-
-            fclose(f);
-
-            return 1;
+            return 0;
         }
     }
 
