@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "security.h"
+#include "libbharat/libbharat.h"
 
 int main(int argc, char *argv[]) {
 
@@ -10,9 +10,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!allowed(argv[1])) {
+    if (!bharat_allowed(argv[1])) {
 
         printf("Permission denied\n");
+
+        bharat_log("cat permission denied");
 
         return 1;
     }
@@ -32,6 +34,8 @@ int main(int argc, char *argv[]) {
         putchar(c);
 
     fclose(f);
+
+    bharat_log("cat executed");
 
     return 0;
 }
