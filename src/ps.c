@@ -1,16 +1,17 @@
 #include <stdio.h>
 #include <dirent.h>
 #include <ctype.h>
-#include <stdlib.h>
+#include <string.h>
 
-char *current_user() {
+int is_numeric(char *s) {
 
-    char *u = getenv("USER");
+    for (int i = 0; s[i]; i++) {
 
-    if (!u)
-        return "unknown";
+        if (!isdigit(s[i]))
+            return 0;
+    }
 
-    return u;
+    return 1;
 }
 
 int main() {
@@ -26,29 +27,42 @@ int main() {
 
     struct dirent *dir;
 
-    printf("PID OWNER\n");
-    printf("---------\n");
+    printf("PID CMD\n");
+    printf("-------\n");
 
     while ((dir = readdir(d)) != NULL) {
 
-        int ok = 1;
+        if (!is_numeric(dir->d_name))
+            continue;
 
-        for (int i = 0; dir->d_name[i]; i++) {
+        char path[512];
 
-            if (!isdigit(dir->d_name[i])) {
+        snprintf(path,
+                 sizeof(path),
+                 "/proc/%s/comm",
+                 dir->d_name);
 
-                ok = 0;
+        FILE *f = fopen(path, "r");
 
-                break;
-            }
+        if (!f)
+            continue;
+
+        char cmd[256];
+
+        if (!fgets(cmd, sizeof(cmd), f)) {
+
+            fclose(f);
+
+            continue;
         }
 
-        if (ok) {
+        cmd[strcspn(cmd, "\n")] = 0;
 
-            printf("%s %s\n",
-                   dir->d_name,
-                   current_user());
-        }
+        fclose(f);
+
+        printf("%s %s\n",
+               dir->d_name,
+               cmd);
     }
 
     closedir(d);

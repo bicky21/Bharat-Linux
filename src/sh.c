@@ -42,7 +42,8 @@ void load_config() {
     if (!home)
         return;
 
-    snprintf(path, sizeof(path),
+    snprintf(path,
+             sizeof(path),
              "%s/.bharatrc",
              home);
 
@@ -75,30 +76,19 @@ void load_config() {
     fclose(f);
 }
 
-void add_history(char *cmd) {
+void add_job(pid_t pid, char *cmd) {
 
-    char path[256];
-
-    char *home = getenv("HOME");
-
-    if (!home)
-        home = "/";
-
-    snprintf(path, sizeof(path),
-             "%s/.history",
-             home);
-
-    FILE *f = fopen(path, "a");
+    FILE *f = fopen("/tmp/jobs", "a");
 
     if (!f)
         return;
 
-    fprintf(f, "%s\n", cmd);
+    fprintf(f, "[%d] %s\n", pid, cmd);
 
     fclose(f);
 }
 
-void execute_simple(char *cmd) {
+void execute(char *cmd) {
 
     char buffer[256];
 
@@ -118,22 +108,6 @@ void execute_simple(char *cmd) {
     }
 
     argv[argc] = NULL;
-    int redirect = 0;
-char *outfile = NULL;
-
-for (int i = 0; i < argc; i++) {
-
-    if (strcmp(argv[i], ">") == 0) {
-
-        redirect = 1;
-
-        outfile = argv[i + 1];
-
-        argv[i] = NULL;
-
-        break;
-    }
-}
 
     if (argc == 0)
         return;
@@ -146,18 +120,19 @@ for (int i = 0; i < argc; i++) {
         return;
     }
 
-    if (strcmp(argv[0], "exit") == 0) {
+    int background = 0;
 
-        exit(0);
+    if (argc > 0 &&
+        strcmp(argv[argc - 1], "&") == 0) {
+
+        background = 1;
+
+        argv[argc - 1] = NULL;
     }
 
     pid_t pid = fork();
 
     if (pid == 0) {
-       if (redirect && outfile) {
-
-    freopen(outfile, "w", stdout);
-}
 
         execvp(argv[0], argv);
 
@@ -168,49 +143,18 @@ for (int i = 0; i < argc; i++) {
 
     else {
 
-        waitpid(pid, NULL, 0);
+        if (background) {
+
+            add_job(pid, cmd);
+
+            printf("[background pid %d]\n", pid);
+        }
+
+        else {
+
+            waitpid(pid, NULL, 0);
+        }
     }
-}
-
-void execute_pipe(char *left, char *right) {
-
-    int fd[2];
-
-    pipe(fd);
-
-    pid_t p1 = fork();
-
-    if (p1 == 0) {
-
-        dup2(fd[1], STDOUT_FILENO);
-
-        close(fd[0]);
-        close(fd[1]);
-
-        execute_simple(left);
-
-        exit(0);
-    }
-
-    pid_t p2 = fork();
-
-    if (p2 == 0) {
-
-        dup2(fd[0], STDIN_FILENO);
-
-        close(fd[1]);
-        close(fd[0]);
-
-        execute_simple(right);
-
-        exit(0);
-    }
-
-    close(fd[0]);
-    close(fd[1]);
-
-    wait(NULL);
-    wait(NULL);
 }
 
 int main() {
@@ -242,25 +186,10 @@ int main() {
         if (strcmp(cmd, "") == 0)
             continue;
 
-        add_history(cmd);
+        if (strcmp(cmd, "exit") == 0)
+            break;
 
-        char *pipepos = strchr(cmd, '|');
-
-        if (pipepos) {
-
-            *pipepos = 0;
-
-            char *right = pipepos + 1;
-
-            while (*right == ' ')
-                right++;
-
-            execute_pipe(cmd, right);
-
-            continue;
-        }
-
-        execute_simple(cmd);
+        execute(cmd);
     }
 
     return 0;

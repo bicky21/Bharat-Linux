@@ -2,11 +2,11 @@
 
 int main() {
 
-    FILE *f = fopen("/tmp/jobs", "r");
+    FILE *f = fopen("/proc/cpuinfo", "r");
 
     if (!f) {
 
-        printf("No jobs\n");
+        printf("Cannot open cpuinfo\n");
 
         return 1;
     }
