@@ -6,6 +6,24 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
+void launch_login() {
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        char *args[] = {"/bin/login", NULL};
+
+        execv("/bin/login", args);
+
+        exit(1);
+    }
+
+    int status;
+
+    waitpid(pid, &status, 0);
+}
+
 int main() {
 
     mkdir("/proc", 0555);
@@ -34,21 +52,7 @@ int main() {
 
     while (1) {
 
-        pid_t pid = fork();
-
-        if (pid == 0) {
-
-            char *args[] = {"/bin/login", NULL};
-
-            execv("/bin/login", args);
-
-            exit(1);
-        }
-
-        else {
-
-            wait(NULL);
-        }
+        launch_login();
     }
 
     return 0;
