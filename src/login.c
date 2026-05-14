@@ -29,30 +29,25 @@ int main() {
         return 1;
     }
 
-    char line[128];
+    char line[256];
 
     while (fgets(line, sizeof(line), f)) {
 
         line[strcspn(line, "\n")] = 0;
 
         char *user = strtok(line, ":");
-
         char *pass = strtok(NULL, ":");
+        strtok(NULL, ":");
+        strtok(NULL, ":");
+        char *home = strtok(NULL, ":");
 
-        if (!user || !pass)
+        if (!user || !pass || !home)
             continue;
 
         if (strcmp(user, username) == 0 &&
             strcmp(pass, password) == 0) {
 
             setenv("USER", username, 1);
-
-            char home[128];
-
-            snprintf(home, sizeof(home),
-                     "/home/%s",
-                     username);
-
             setenv("HOME", home, 1);
 
             chdir(home);
