@@ -1,0 +1,2 @@
+export PS1=\033[1;32mbharat-shell$\033[0m
+export TERM=bharat

@@ -10,6 +10,48 @@ void cleanup(int sig) {
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
+void load_config() {
+
+    char path[256];
+
+    char *home = getenv("HOME");
+
+    if (!home)
+        return;
+
+    snprintf(path, sizeof(path),
+             "%s/.bharatrc",
+             home);
+
+    FILE *f = fopen(path, "r");
+
+    if (!f)
+        return;
+
+    char line[256];
+
+    while (fgets(line, sizeof(line), f)) {
+
+        line[strcspn(line, "\n")] = 0;
+
+        if (strncmp(line, "export ", 7) == 0) {
+
+            char *env = line + 7;
+
+            char *eq = strchr(env, '=');
+
+            if (!eq)
+                continue;
+
+            *eq = 0;
+
+            setenv(env, eq + 1, 1);
+        }
+    }
+
+    fclose(f);
+}
+
 void get_history_path(char *path) {
 
     char *home = getenv("HOME");
@@ -102,6 +144,23 @@ void execute(char *cmd) {
         return;
     }
 
+    if (strcmp(argv[0], "export") == 0) {
+
+        if (argc > 1) {
+
+            char *eq = strchr(argv[1], '=');
+
+            if (eq) {
+
+                *eq = 0;
+
+                setenv(argv[1], eq + 1, 1);
+            }
+        }
+
+        return;
+    }
+
     int background = 0;
 
     if (strcmp(argv[argc - 1], "&") == 0) {
@@ -132,15 +191,6 @@ void execute(char *cmd) {
         else {
 
             printf("[background pid %d]\n", pid);
-
-            FILE *jf = fopen("/run/jobs", "a");
-
-            if (jf) {
-
-                fprintf(jf, "%d %s\n", pid, argv[0]);
-
-                fclose(jf);
-            }
         }
     }
 }
@@ -151,11 +201,18 @@ int main() {
 
     setenv("PATH", "/bin:/usr/bin", 1);
 
+    load_config();
+
     char cmd[256];
 
     while (1) {
 
-        printf("bharat-shell$ ");
+        char *ps1 = getenv("PS1");
+
+        if (!ps1)
+            ps1 = "bharat-shell$";
+
+        printf("%s ", ps1);
 
         fflush(stdout);
 
@@ -171,24 +228,6 @@ int main() {
 
         if (strcmp(cmd, "exit") == 0)
             break;
-
-        char *chain = strstr(cmd, "&&");
-
-        if (chain) {
-
-            *chain = 0;
-
-            char *cmd2 = chain + 2;
-
-            while (*cmd2 == ' ')
-                cmd2++;
-
-            execute(cmd);
-
-            execute(cmd2);
-
-            continue;
-        }
 
         execute(cmd);
     }
