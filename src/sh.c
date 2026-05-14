@@ -10,6 +10,29 @@ void cleanup(int sig) {
     while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
+void print_prompt(char *ps1) {
+
+    for (int i = 0; ps1[i]; i++) {
+
+        if (ps1[i] == '\\' &&
+            ps1[i + 1] == '0' &&
+            ps1[i + 2] == '3' &&
+            ps1[i + 3] == '3') {
+
+            putchar(27);
+
+            i += 3;
+        }
+
+        else {
+
+            putchar(ps1[i]);
+        }
+    }
+
+    putchar(' ');
+}
+
 void load_config() {
 
     char path[256];
@@ -212,7 +235,7 @@ int main() {
         if (!ps1)
             ps1 = "bharat-shell$";
 
-        printf("%s ", ps1);
+        print_prompt(ps1);
 
         fflush(stdout);
 
