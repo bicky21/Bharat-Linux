@@ -7,35 +7,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-void start_services() {
-
-    FILE *f = fopen("/etc/services/enabled", "r");
-
-    if (!f)
-        return;
-
-    char line[256];
-
-    while (fgets(line, sizeof(line), f)) {
-
-        line[strcspn(line, "\n")] = 0;
-
-        if (strlen(line) == 0)
-            continue;
-
-        pid_t pid = fork();
-
-        if (pid == 0) {
-
-            execl(line, line, NULL);
-
-            exit(1);
-        }
-    }
-
-    fclose(f);
-}
-
 int main() {
 
     mkdir("/proc", 0555);
@@ -52,7 +23,16 @@ int main() {
 
     printf("Launching login...\n");
 
-    start_services();
+    pid_t svc = fork();
+
+    if (svc == 0) {
+
+        execl("/bin/serviced",
+              "/bin/serviced",
+              NULL);
+
+        exit(1);
+    }
 
     while (1) {
 
@@ -64,7 +44,7 @@ int main() {
 
             execv("/bin/login", args);
 
-            while (1);
+            exit(1);
         }
 
         else {

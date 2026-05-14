@@ -3,13 +3,19 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+char *current_user() {
+
+    char *u = getenv("USER");
+
+    if (!u)
+        return "unknown";
+
+    return u;
+}
+
 int main() {
 
-    DIR *d;
-
-    struct dirent *dir;
-
-    d = opendir("/proc");
+    DIR *d = opendir("/proc");
 
     if (!d) {
 
@@ -18,27 +24,30 @@ int main() {
         return 1;
     }
 
-    printf("PID OWNER\n");
+    struct dirent *dir;
 
-    char *user = getenv("USER");
+    printf("PID OWNER\n");
+    printf("---------\n");
 
     while ((dir = readdir(d)) != NULL) {
 
-        int valid = 1;
+        int ok = 1;
 
-        for (int i = 0; dir->d_name[i] != '\0'; i++) {
+        for (int i = 0; dir->d_name[i]; i++) {
 
             if (!isdigit(dir->d_name[i])) {
 
-                valid = 0;
+                ok = 0;
 
                 break;
             }
         }
 
-        if (valid) {
+        if (ok) {
 
-            printf("%s %s\n", dir->d_name, user);
+            printf("%s %s\n",
+                   dir->d_name,
+                   current_user());
         }
     }
 
