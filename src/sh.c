@@ -12,6 +12,50 @@ void print_prompt() {
     fflush(stdout);
 }
 
+void normalize(char *cmd) {
+
+    char temp[512] = {0};
+
+    int j = 0;
+
+    for (int i = 0; cmd[i]; i++) {
+
+        if (cmd[i] == '>') {
+
+            temp[j++] = ' ';
+
+            temp[j++] = '>';
+
+            if (cmd[i + 1] == '>') {
+
+                temp[j++] = '>';
+
+                i++;
+            }
+
+            temp[j++] = ' ';
+        }
+
+        else if (cmd[i] == '|') {
+
+            temp[j++] = ' ';
+
+            temp[j++] = '|';
+
+            temp[j++] = ' ';
+        }
+
+        else {
+
+            temp[j++] = cmd[i];
+        }
+    }
+
+    temp[j] = 0;
+
+    strcpy(cmd, temp);
+}
+
 void parse_args(char *cmd, char **argv) {
 
     int argc = 0;
@@ -205,7 +249,7 @@ int main() {
 
     setenv("PATH", "/bin:/usr/bin", 1);
 
-    char cmd[256];
+    char cmd[512];
 
     while (1) {
 
@@ -215,6 +259,8 @@ int main() {
             continue;
 
         cmd[strcspn(cmd, "\n")] = 0;
+
+        normalize(cmd);
 
         if (strcmp(cmd, "") == 0)
             continue;
