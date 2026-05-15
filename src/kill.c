@@ -13,6 +13,13 @@ int main(int argc, char *argv[]) {
 
     int pid = atoi(argv[1]);
 
+    if (pid <= 0) {
+
+        printf("Invalid pid\n");
+
+        return 1;
+    }
+
     if (kill(pid, SIGKILL) == 0)
         printf("Process killed\n");
     else

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 struct shell_var {
 
@@ -463,12 +465,17 @@ void execute_command(char *cmd) {
 
     execute_simple(cmd);
 }
+void cleanup(int sig) {
+
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+}
 
 int main() {
 
     setenv("PATH", "/bin:/usr/bin", 1);
 
     char cmd[512];
+    signal(SIGCHLD, cleanup);
 
     while (1) {
 
