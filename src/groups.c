@@ -1,21 +1,32 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 int main() {
 
-    FILE *f = fopen("/etc/group", "r");
+    FILE *f = fopen("/etc/groups", "r");
 
     if (!f) {
 
-        printf("Cannot open group database\n");
+        printf("No groups database\n");
 
         return 1;
     }
 
-    char line[256];
+    char user[64];
+    char group[64];
 
-    while (fgets(line, sizeof(line), f)) {
+    char *current = getenv("USER");
 
-        printf("%s", line);
+    while (fscanf(f,
+                  "%63s %63s",
+                  user,
+                  group) == 2) {
+
+        if (strcmp(user, current) == 0) {
+
+            printf("%s\n", group);
+        }
     }
 
     fclose(f);
