@@ -65,33 +65,37 @@ void execute_simple(char *cmd) {
 
 void execute_redirect(char *cmd, int append) {
 
-    char *file;
+    char *redirect;
 
     if (append)
-        file = strstr(cmd, ">>");
+        redirect = strstr(cmd, ">>");
     else
-        file = strchr(cmd, '>');
+        redirect = strchr(cmd, '>');
 
-    if (!file)
+    if (!redirect)
         return;
 
-    *file = 0;
+    *redirect = 0;
 
     if (append)
-        file += 2;
+        redirect += 2;
     else
-        file += 1;
+        redirect += 1;
 
-    while (*file == ' ')
-        file++;
+    while (*redirect == ' ')
+        redirect++;
 
-    char buffer[256];
+    char filename[128];
 
-    strcpy(buffer, cmd);
+    strcpy(filename, redirect);
+
+    char command[256];
+
+    strcpy(command, cmd);
 
     char *argv[32];
 
-    parse_args(buffer, argv);
+    parse_args(command, argv);
 
     pid_t pid = fork();
 
@@ -99,14 +103,26 @@ void execute_redirect(char *cmd, int append) {
 
         int fd;
 
-        if (append)
-            fd = open(file,
+        if (append) {
+
+            fd = open(filename,
                       O_WRONLY | O_CREAT | O_APPEND,
                       0644);
-        else
-            fd = open(file,
+        }
+
+        else {
+
+            fd = open(filename,
                       O_WRONLY | O_CREAT | O_TRUNC,
                       0644);
+        }
+
+        if (fd < 0) {
+
+            printf("Cannot open output file\n");
+
+            exit(1);
+        }
 
         dup2(fd, STDOUT_FILENO);
 

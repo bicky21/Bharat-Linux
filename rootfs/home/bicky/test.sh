@@ -1,0 +1,2 @@
+NAME=Bharat
+echo $NAME
