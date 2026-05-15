@@ -13,15 +13,10 @@ int main(int argc, char *argv[]) {
 
     int pid = atoi(argv[1]);
 
-    if (kill(pid, SIGTERM) == 0) {
-
-        printf("Killed %d\n", pid);
-    }
-
-    else {
-
+    if (kill(pid, SIGKILL) == 0)
+        printf("Process killed\n");
+    else
         printf("Kill failed\n");
-    }
 
     return 0;
 }

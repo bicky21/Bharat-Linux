@@ -268,7 +268,27 @@ void execute_simple(char *cmd) {
         exit(1);
     }
 
+    if (strstr(cmd, "&")) {
+
+    FILE *jf = fopen("/tmp/jobs", "a");
+
+    if (jf) {
+
+        fprintf(jf,
+                "[%d] running %s\n",
+                pid,
+                cmd);
+
+        fclose(jf);
+    }
+
+    printf("[background pid %d]\n", pid);
+}
+
+else {
+
     waitpid(pid, NULL, 0);
+}
 }
 
 void execute_redirect(char *cmd, int append) {

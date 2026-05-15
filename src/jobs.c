@@ -8,13 +8,10 @@ int main() {
 
         printf("No jobs\n");
 
-        return 1;
+        return 0;
     }
 
     char line[256];
-
-    printf("Background Jobs\n");
-    printf("----------------\n");
 
     while (fgets(line, sizeof(line), f)) {
 

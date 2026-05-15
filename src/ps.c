@@ -2,17 +2,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <string.h>
-
-int is_numeric(char *s) {
-
-    for (int i = 0; s[i]; i++) {
-
-        if (!isdigit(s[i]))
-            return 0;
-    }
-
-    return 1;
-}
+#include <stdlib.h>
 
 int main() {
 
@@ -27,19 +17,19 @@ int main() {
 
     struct dirent *dir;
 
-    printf("PID CMD\n");
-    printf("-------\n");
+    printf("PID STATE COMMAND\n");
+    printf("-----------------\n");
 
-    while ((dir = readdir(d)) != NULL) {
+    while ((dir = readdir(d))) {
 
-        if (!is_numeric(dir->d_name))
+        if (!isdigit((unsigned char)dir->d_name[0]))
             continue;
 
         char path[512];
 
         snprintf(path,
                  sizeof(path),
-                 "/proc/%s/comm",
+                 "/proc/%.200s/stat",
                  dir->d_name);
 
         FILE *f = fopen(path, "r");
@@ -47,22 +37,24 @@ int main() {
         if (!f)
             continue;
 
-        char cmd[256];
+        int pid;
 
-        if (!fgets(cmd, sizeof(cmd), f)) {
+        char comm[128];
 
-            fclose(f);
+        char state;
 
-            continue;
-        }
-
-        cmd[strcspn(cmd, "\n")] = 0;
+        fscanf(f,
+               "%d %127s %c",
+               &pid,
+               comm,
+               &state);
 
         fclose(f);
 
-        printf("%s %s\n",
-               dir->d_name,
-               cmd);
+        printf("%d %c %s\n",
+               pid,
+               state,
+               comm);
     }
 
     closedir(d);
