@@ -1,22 +1,22 @@
 #include <stdio.h>
-#include "libbharat/libbharat.h"
+
+void read_stream(FILE *f) {
+
+    int c;
+
+    while ((c = fgetc(f)) != EOF) {
+
+        putchar(c);
+    }
+}
 
 int main(int argc, char *argv[]) {
 
     if (argc < 2) {
 
-        printf("Usage: cat <file>\n");
+        read_stream(stdin);
 
-        return 1;
-    }
-
-    if (!bharat_allowed(argv[1])) {
-
-        printf("Permission denied\n");
-
-        bharat_log("cat permission denied");
-
-        return 1;
+        return 0;
     }
 
     FILE *f = fopen(argv[1], "r");
@@ -28,14 +28,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char c;
-
-    while ((c = fgetc(f)) != EOF)
-        putchar(c);
+    read_stream(f);
 
     fclose(f);
-
-    bharat_log("cat executed");
 
     return 0;
 }

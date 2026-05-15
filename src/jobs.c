@@ -13,6 +13,9 @@ int main() {
 
     char line[256];
 
+    printf("Background Jobs\n");
+    printf("----------------\n");
+
     while (fgets(line, sizeof(line), f)) {
 
         printf("%s", line);
