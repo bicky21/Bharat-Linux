@@ -2,7 +2,6 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/mount.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
@@ -12,43 +11,46 @@ void launch_login() {
 
     if (pid == 0) {
 
-        char *args[] = {"/bin/login", NULL};
+        execl("/bin/login",
+              "/bin/login",
+              NULL);
 
-        execv("/bin/login", args);
+        perror("login exec failed");
 
         exit(1);
     }
 
-    int status;
-
-    waitpid(pid, &status, 0);
+    waitpid(pid, NULL, 0);
 }
 
 int main() {
 
     mkdir("/proc", 0555);
     mkdir("/sys", 0555);
-    mkdir("/run", 0755);
-    mkdir("/tmp", 0777);
+    mkdir("/dev", 0755);
 
-    mount("proc", "/proc", "proc", 0, 0);
-    mount("sysfs", "/sys", "sysfs", 0, 0);
+    mount("proc",
+          "/proc",
+          "proc",
+          0,
+          0);
+
+    mount("sysfs",
+          "/sys",
+          "sysfs",
+          0,
+          0);
+
+    mount("devtmpfs",
+          "/dev",
+          "devtmpfs",
+          0,
+          0);
 
     printf("\n");
     printf("=================================\n");
     printf("        Bharat-linux CLI        \n");
     printf("=================================\n");
-
-    pid_t svc = fork();
-
-    if (svc == 0) {
-
-        execl("/bin/serviced",
-              "/bin/serviced",
-              NULL);
-
-        exit(1);
-    }
 
     while (1) {
 

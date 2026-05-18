@@ -11,18 +11,16 @@ int main(int argc, char *argv[]) {
 
             printf("(none)\n");
 
-            return 1;
+            return 0;
         }
 
-        char host[256];
+        char host[128];
 
         fgets(host, sizeof(host), f);
 
-        host[strcspn(host, "\n")] = 0;
-
-        printf("%s\n", host);
-
         fclose(f);
+
+        printf("%s", host);
 
         return 0;
     }
@@ -31,7 +29,7 @@ int main(int argc, char *argv[]) {
 
     if (!f) {
 
-        printf("Cannot write hostname\n");
+        printf("Cannot set hostname\n");
 
         return 1;
     }
@@ -40,7 +38,7 @@ int main(int argc, char *argv[]) {
 
     fclose(f);
 
-    printf("Hostname set to %s\n", argv[1]);
+    printf("Hostname updated\n");
 
     return 0;
 }

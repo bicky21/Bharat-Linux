@@ -2,23 +2,43 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <termios.h>
 
-int main() {
+void trim(char *s) {
 
-    char username[64];
-    char password[64];
+    s[strcspn(s, "\n")] = 0;
 
-    printf("login: ");
+    s[strcspn(s, "\r")] = 0;
+}
 
-    fgets(username, sizeof(username), stdin);
+void disable_echo() {
 
-    username[strcspn(username, "\n")] = 0;
+    struct termios t;
 
-    printf("password: ");
+    tcgetattr(STDIN_FILENO, &t);
 
-    fgets(password, sizeof(password), stdin);
+    t.c_lflag &= ~ECHO;
 
-    password[strcspn(password, "\n")] = 0;
+    tcsetattr(STDIN_FILENO,
+              TCSANOW,
+              &t);
+}
+
+void enable_echo() {
+
+    struct termios t;
+
+    tcgetattr(STDIN_FILENO, &t);
+
+    t.c_lflag |= ECHO;
+
+    tcsetattr(STDIN_FILENO,
+              TCSANOW,
+              &t);
+}
+
+int authenticate(char *user,
+                 char *pass) {
 
     FILE *f = fopen("/etc/passwd", "r");
 
@@ -26,39 +46,39 @@ int main() {
 
         printf("Cannot open passwd database\n");
 
-        return 1;
+        return 0;
     }
 
-    char line[256];
+    char line[512];
 
-    while (fgets(line, sizeof(line), f)) {
+    while (fgets(line,
+                 sizeof(line),
+                 f)) {
 
-        line[strcspn(line, "\n")] = 0;
+        trim(line);
 
-        char *user = strtok(line, ":");
-        char *pass = strtok(NULL, ":");
-        strtok(NULL, ":");
-        strtok(NULL, ":");
-        char *home = strtok(NULL, ":");
+        char *username = strtok(line, ":");
+        char *password = strtok(NULL, ":");
+        char *uid      = strtok(NULL, ":");
+        char *gid      = strtok(NULL, ":");
+        char *home     = strtok(NULL, ":");
+        char *shell    = strtok(NULL, ":");
 
-        if (!user || !pass || !home)
+        if (!username ||
+            !password ||
+            !uid ||
+            !gid ||
+            !home ||
+            !shell)
             continue;
+
+        trim(username);
+        trim(password);
 
         if (strcmp(user, username) == 0 &&
             strcmp(pass, password) == 0) {
 
-            setenv("USER", username, 1);
-            setenv("HOME", home, 1);
-
-            chdir(home);
-
-            printf("Welcome %s\n", username);
-
-            char *args[] = {"/bin/sh", NULL};
-
-            execv("/bin/sh", args);
-
-            printf("Shell launch failed\n");
+            fclose(f);
 
             return 1;
         }
@@ -66,7 +86,119 @@ int main() {
 
     fclose(f);
 
-    printf("Login failed\n");
+    return 0;
+}
 
-    return 1;
+void load_user_environment(char *user) {
+
+    FILE *f = fopen("/etc/passwd", "r");
+
+    if (!f)
+        return;
+
+    char line[512];
+
+    while (fgets(line,
+                 sizeof(line),
+                 f)) {
+
+        trim(line);
+
+        char *username = strtok(line, ":");
+        char *password = strtok(NULL, ":");
+        char *uid      = strtok(NULL, ":");
+        char *gid      = strtok(NULL, ":");
+        char *home     = strtok(NULL, ":");
+        char *shell    = strtok(NULL, ":");
+
+        if (!username ||
+            !password ||
+            !uid ||
+            !gid ||
+            !home ||
+            !shell)
+            continue;
+
+        if (strcmp(user, username) == 0) {
+
+            setenv("USER",
+                   username,
+                   1);
+
+            setenv("HOME",
+                   home,
+                   1);
+
+            chdir(home);
+
+            fclose(f);
+
+            return;
+        }
+    }
+
+    fclose(f);
+}
+
+int main() {
+
+    char user[64];
+
+    char pass[64];
+
+    while (1) {
+
+        printf("login: ");
+
+        fflush(stdout);
+
+        if (!fgets(user,
+                   sizeof(user),
+                   stdin))
+            continue;
+
+        trim(user);
+
+        printf("password: ");
+
+        fflush(stdout);
+
+        disable_echo();
+
+        if (!fgets(pass,
+                   sizeof(pass),
+                   stdin)) {
+
+            enable_echo();
+
+            continue;
+        }
+
+        enable_echo();
+
+        printf("\n");
+
+        trim(pass);
+
+        if (authenticate(user,
+                         pass)) {
+
+            load_user_environment(user);
+
+            printf("Welcome %s\n",
+                   user);
+
+            execl("/bin/sh",
+                  "/bin/sh",
+                  NULL);
+
+            perror("shell failed");
+
+            exit(1);
+        }
+
+        printf("Login failed\n");
+    }
+
+    return 0;
 }
