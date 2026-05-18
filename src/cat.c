@@ -1,59 +1,23 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-
-int allowed(char *path) {
-
-    FILE *f = fopen("/etc/owners", "r");
-
-    if (!f)
-        return 1;
-
-    char file[128];
-    char owner[64];
-
-    char *user = getenv("USER");
-
-    while (fscanf(f,
-                  "%127s %63s",
-                  file,
-                  owner) == 2) {
-
-        if (strcmp(file, path) == 0) {
-
-            fclose(f);
-
-            if (strcmp(user, owner) == 0 ||
-                strcmp(user, "root") == 0)
-                return 1;
-
-            return 0;
-        }
-    }
-
-    fclose(f);
-
-    return 1;
-}
-
-void read_stream(FILE *f) {
-
-    int c;
-
-    while ((c = fgetc(f)) != EOF)
-        putchar(c);
-}
+#include <string.h>
+#include "libperm.h"
 
 int main(int argc, char *argv[]) {
 
-    if (argc < 2) {
+    if (argc != 2) {
 
-        read_stream(stdin);
+        printf("usage: cat <file>\n");
 
-        return 0;
+        return 1;
     }
 
-    if (!allowed(argv[1])) {
+    char *user = getenv("USER");
+
+    if (!user)
+        user = "unknown";
+
+    if (!check_perm(argv[1], user)) {
 
         printf("Permission denied\n");
 
@@ -69,7 +33,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    read_stream(f);
+    char c;
+
+    while ((c = fgetc(f)) != EOF)
+        putchar(c);
 
     fclose(f);
 
