@@ -1,63 +1,46 @@
 #include <stdio.h>
-#include <dirent.h>
-#include <ctype.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 int main() {
 
-    DIR *d = opendir("/proc");
+    FILE *f = fopen("/run/processes.db", "r");
 
-    if (!d) {
+    if (!f) {
 
-        printf("Cannot open /proc\n");
+        printf("Cannot open process database\n");
 
         return 1;
     }
 
-    struct dirent *dir;
+    printf("PID USER COMMAND\n");
+    printf("------------------------------\n");
 
-    printf("PID STATE COMMAND\n");
-    printf("-----------------\n");
+    char line[512];
 
-    while ((dir = readdir(d))) {
-
-        if (!isdigit((unsigned char)dir->d_name[0]))
-            continue;
-
-        char path[512];
-
-        snprintf(path,
-                 sizeof(path),
-                 "/proc/%.200s/stat",
-                 dir->d_name);
-
-        FILE *f = fopen(path, "r");
-
-        if (!f)
-            continue;
+    while (fgets(line,
+                 sizeof(line),
+                 f)) {
 
         int pid;
 
-        char comm[128];
+        char user[64];
+        char cmd[256];
 
-        char state;
+        if (sscanf(line,
+                   "%d:%63[^:]:%255[^\n]",
+                   &pid,
+                   user,
+                   cmd) != 3)
+            continue;
 
-        fscanf(f,
-               "%d %127s %c",
-               &pid,
-               comm,
-               &state);
-
-        fclose(f);
-
-        printf("%d %c %s\n",
+        printf("%d %s %s\n",
                pid,
-               state,
-               comm);
+               user,
+               cmd);
     }
 
-    closedir(d);
+    fclose(f);
 
     return 0;
 }
