@@ -105,6 +105,11 @@ int main() {
             return 1;
 
         printf("Welcome %s\n", user.name);
+
+        /* only here, on the text login: never inside the desktop's Terminal */
+        if (access("/bin/desktop", X_OK) == 0)
+            printf("Type desktop to start the graphical desktop.\n");
+
         fflush(stdout);
 
         execl(user.shell, user.shell, NULL);
