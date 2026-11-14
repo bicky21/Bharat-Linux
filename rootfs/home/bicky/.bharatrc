@@ -1,3 +1,4 @@
 NAME=Bharat
 export PATH=/bin:/usr/bin
 echo Welcome $NAME
+echo Type desktop to start the graphical desktop.

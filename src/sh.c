@@ -667,8 +667,14 @@ void run_pipeline(char *cmd) {
 
             if (WIFEXITED(status))
                 last_status = WEXITSTATUS(status);
-            else if (WIFSIGNALED(status))
+            else if (WIFSIGNALED(status)) {
+
                 last_status = 128 + WTERMSIG(status);
+
+                /* after Ctrl-C, start the prompt on a fresh line */
+                if (interactive && WTERMSIG(status) == SIGINT)
+                    printf("\n");
+            }
         }
     }
 }

@@ -1,0 +1,7 @@
+# drivers loaded at start-up (one per line, in this order)
+# PS/2 mouse
+psmouse
+# USB tablet: QEMU uses it so the pointer follows your own mouse
+hid
+usbhid
+hid_generic

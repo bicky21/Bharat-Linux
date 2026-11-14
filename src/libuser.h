@@ -16,7 +16,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+/* glibc keeps crypt() in its own library with a header; musl has it built in */
+#if __has_include(<crypt.h>)
 #include <crypt.h>
+#else
+char *crypt(const char *key, const char *salt);
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -263,6 +268,129 @@ static inline int write_hash(const char *name,
 
     /* rename swaps the file in one step, so it is never half-written */
     return rename("/etc/shadow.tmp", "/etc/shadow") == 0;
+}
+
+/*
+ * /etc/group   name:x:gid:member1,member2
+ */
+
+/* Group name -> gid. Returns 1 if found. */
+static inline int find_group(const char *name,
+                             gid_t *gid) {
+
+    FILE *f = fopen("/etc/group", "r");
+
+    if (!f)
+        return 0;
+
+    char line[512];
+    int found = 0;
+
+    while (!found && fgets(line, sizeof(line), f)) {
+
+        char *colon = strchr(line, ':');
+
+        if (!colon)
+            continue;
+
+        *colon = 0;
+
+        char *second = strchr(colon + 1, ':');
+
+        if (strcmp(line, name) == 0 && second) {
+
+            *gid = (gid_t)atoi(second + 1);
+            found = 1;
+        }
+    }
+
+    fclose(f);
+
+    return found;
+}
+
+/* gid -> group name ("" if unknown). */
+static inline void group_name(gid_t gid,
+                              char *out,
+                              size_t size) {
+
+    FILE *f = fopen("/etc/group", "r");
+
+    out[0] = 0;
+
+    if (!f)
+        return;
+
+    char line[512];
+
+    while (fgets(line, sizeof(line), f)) {
+
+        char *colon = strchr(line, ':');
+
+        if (!colon)
+            continue;
+
+        *colon = 0;
+
+        char *second = strchr(colon + 1, ':');
+
+        if (second && (gid_t)atoi(second + 1) == gid) {
+
+            snprintf(out, size, "%.63s", line);
+            break;
+        }
+    }
+
+    fclose(f);
+}
+
+/* The extra groups a user is a member of. Returns how many. */
+static inline int user_groups(const char *user,
+                              gid_t *list,
+                              int max) {
+
+    FILE *f = fopen("/etc/group", "r");
+
+    if (!f)
+        return 0;
+
+    char line[512];
+    int count = 0;
+
+    while (count < max && fgets(line, sizeof(line), f)) {
+
+        line[strcspn(line, "\r\n")] = 0;
+
+        /* split into the 4 fields */
+        char *field[4] = {line, NULL, NULL, NULL};
+
+        for (int i = 1; i < 4; i++) {
+
+            char *colon = field[i - 1] ? strchr(field[i - 1], ':') : NULL;
+
+            if (colon) {
+
+                *colon = 0;
+                field[i] = colon + 1;
+            }
+        }
+
+        if (!field[3])
+            continue;
+
+        for (char *m = strtok(field[3], ","); m; m = strtok(NULL, ",")) {
+
+            if (strcmp(m, user) == 0) {
+
+                list[count++] = (gid_t)atoi(field[2]);
+                break;
+            }
+        }
+    }
+
+    fclose(f);
+
+    return count;
 }
 
 /* Reads a line from the keyboard without showing it. Returns 1 if ok. */

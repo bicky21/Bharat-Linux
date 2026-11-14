@@ -1,37 +1,39 @@
+/*
+ * groups - show the groups the current user belongs to.
+ * The kernel keeps them per process; /etc/group gives their names.
+ */
+
 #include <stdio.h>
-#include <string.h>
+#include <unistd.h>
 
 #include "libuser.h"
-#include <stdlib.h>
+
+static void show(gid_t gid) {
+
+    char name[64];
+
+    group_name(gid, name, sizeof(name));
+
+    if (name[0])
+        printf("%s ", name);
+    else
+        printf("%d ", (int)gid);
+}
 
 int main() {
 
-    FILE *f = fopen("/etc/groups", "r");
+    gid_t list[64];
+    int count = getgroups(64, list);
 
-    if (!f) {
+    show(getgid());
 
-        printf("No groups database\n");
+    for (int i = 0; i < count; i++) {
 
-        return 1;
+        if (list[i] != getgid())
+            show(list[i]);
     }
 
-    char user[64];
-    char group[64];
-
-    const char *current = current_user_name();
-
-    while (fscanf(f,
-                  "%63s %63s",
-                  user,
-                  group) == 2) {
-
-        if (strcmp(user, current) == 0) {
-
-            printf("%s\n", group);
-        }
-    }
-
-    fclose(f);
+    printf("\n");
 
     return 0;
 }
