@@ -500,7 +500,13 @@ struct image *image_load(const char *path) {
 
 void draw_image(struct image *img, int x, int y) {
 
-    if (!img || !gfx_visible(x, y, img->w, img->h))
+    draw_image_alpha(img, x, y, 255);
+}
+
+/* The same, but see-through: alpha 0 = invisible, 255 = normal. */
+void draw_image_alpha(struct image *img, int x, int y, int alpha) {
+
+    if (!img || alpha <= 0 || !gfx_visible(x, y, img->w, img->h))
         return;
 
     for (int j = 0; j < img->h; j++) {
@@ -510,7 +516,8 @@ void draw_image(struct image *img, int x, int y) {
         for (int i = 0; i < img->w; i++, p += 4) {
 
             if (p[3])
-                put_pixel(x + i, y + j, ((uint32_t)p[0] << 16) | (p[1] << 8) | p[2], p[3]);
+                put_pixel(x + i, y + j, ((uint32_t)p[0] << 16) | (p[1] << 8) | p[2],
+                          p[3] * alpha / 255);
         }
     }
 }

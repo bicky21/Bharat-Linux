@@ -20,9 +20,8 @@ every part that the user touches is written here, from scratch, in C.
 | Network helpers (`ip`, `udhcpc`) | BusyBox (ready-made, to be replaced) |
 
 So right now this is **our own userland on top of the Linux kernel**.
-It boots like a normal Linux system: boot screen with the logo, then the
-desktop (logged in automatically), with a graphical login screen after
-logging out.
+It boots like a normal Linux system: an animated boot screen with the
+logo, then a graphical login screen, then the desktop.
 
 | Boot | Login | Desktop |
 |------|-------|---------|
@@ -48,8 +47,8 @@ make            # 1. compile every program in src/ into rootfs/
 ./run.sh        # 3. boot it in QEMU
 ```
 
-The boot screen appears, then the desktop opens by itself (user `bicky`
-is logged in automatically). Shut down from the start menu: **Power off**.
+The boot screen appears, then the login screen: type the password and
+press Enter. Shut down from the start menu: **Power off**.
 
 Passwords: `bicky` / `1234`, `root` / `x`.
 
@@ -83,20 +82,21 @@ Networking: inside Bharat-linux, as root: `service modules`, then
 
 1. The kernel starts `init` (`src/init.c`).
 2. `init` starts `devd` (drivers, device permissions) and the services.
-3. `init` starts `greeter` (`src/greeter/`), which shows the boot screen
-   with the logo while the drivers load.
-4. `greeter` logs in the user named in `/etc/greeter.conf`
-   (`autologin=bicky`) and starts the desktop as that user.
-5. **Log out** (start menu) brings the graphical login screen. It has
-   **Restart**, **Power off** and **Text mode** (the old text login; type
-   `exit` there to come back).
+3. `init` starts `greeter` (`src/greeter/`), which shows the animated boot
+   screen (the logo fades in, three dots pulse) while the drivers load.
+4. The logo glides up into the graphical login screen. It has **Restart**,
+   **Power off** and **Text mode** (the old text login; type `exit` there
+   to come back).
+5. After the password, `greeter` starts the desktop as that user.
+   **Log out** (start menu) brings the login screen back.
 
 Without a graphics screen (`./run.sh text`), `init` starts the text login
 instead.
 
-To always ask for a password, remove the `autologin=bicky` line from
-`rootfs/etc/greeter.conf` and run `./rebuild.sh`. Anyone who can use the
-computer gets into `bicky`'s account while automatic login is on.
+Automatic login (no password at start-up) is off. To turn it on, remove
+the `#` in front of `autologin=bicky` in `rootfs/etc/greeter.conf` and run
+`./rebuild.sh`. Anyone who can use the computer then gets into `bicky`'s
+account.
 
 The logo pictures in `rootfs/usr/share/bharat/` are made from
 `docs/logo.png` by `tools/make-logo.py`.
