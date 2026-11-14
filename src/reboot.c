@@ -12,7 +12,7 @@ int main() {
 
     reboot(RB_AUTOBOOT);
 
-    printf("Reboot failed\n");
+    printf("Only root can reboot. Use: sudo reboot\n");
 
     return 1;
 }

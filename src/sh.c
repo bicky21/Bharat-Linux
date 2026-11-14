@@ -12,7 +12,7 @@
  *   cmd > f   cmd >> f   cmd < f   redirection
  *   cmd &                       run in the background
  *   NAME=value   export NAME=value   $NAME   $?
- *   cd [dir]   exit [code]
+ *   cd [dir]   exit [code]   jobs
  *   if exists FILE then CMD
  *   while N do CMD
  *   # comment
@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <signal.h>
 
-#include "libproc.h"
+#include "libuser.h"
 
 #define MAX_LINE   512
 #define MAX_TOKENS 64
@@ -49,9 +49,41 @@ void execute_command(char *cmd);
 
 /* ---------- small helpers ---------- */
 
+/* Looks like:  bicky@bharat-pc:~/docs$   (root gets # instead of $) */
 void print_prompt() {
 
-    printf("\033[1;32mbharat-shell$\033[0m ");
+    char host[64] = "bharat";
+    char cwd[256] = "?";
+
+    gethostname(host, sizeof(host) - 1);
+
+    if (!getcwd(cwd, sizeof(cwd)))
+        strcpy(cwd, "?");
+
+    char *home = getenv("HOME");
+    char *shown = cwd;
+    char *tilde = "";
+
+    /* show the home folder as ~ */
+    if (home && home[0] && strcmp(home, "/") != 0) {
+
+        size_t len = strlen(home);
+
+        if (strncmp(cwd, home, len) == 0 &&
+            (cwd[len] == 0 || cwd[len] == '/')) {
+
+            tilde = "~";
+            shown = cwd + len;
+        }
+    }
+
+    printf("\033[1;32m%s@%s\033[0m:\033[1;34m%s%s\033[0m%s ",
+           current_user_name(),
+           host,
+           tilde,
+           shown,
+           getuid() == 0 ? "#" : "$");
+
     fflush(stdout);
 }
 
@@ -78,14 +110,30 @@ void trim(char *s) {
     }
 }
 
-char *current_user() {
+/* ---------- background jobs (kept in the shell's own memory) ---------- */
 
-    char *user = getenv("USER");
+#define MAX_JOBS 32
 
-    if (!user)
-        user = "unknown";
+struct job {
+    pid_t pid;
+    char cmd[128];
+};
 
-    return user;
+struct job jobs[MAX_JOBS];
+
+void add_job(pid_t pid,
+             char *cmd) {
+
+    for (int i = 0; i < MAX_JOBS; i++) {
+
+        if (jobs[i].pid == 0) {
+
+            jobs[i].pid = pid;
+            snprintf(jobs[i].cmd, sizeof(jobs[i].cmd), "%s", cmd);
+
+            return;
+        }
+    }
 }
 
 /* Collect finished background jobs so they do not stay as zombies. */
@@ -94,8 +142,38 @@ void reap_background() {
     int status;
     pid_t pid;
 
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-        unregister_process(pid);
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+
+        for (int i = 0; i < MAX_JOBS; i++) {
+
+            if (jobs[i].pid == pid) {
+
+                if (interactive)
+                    printf("[done %d] %s\n", pid, jobs[i].cmd);
+
+                jobs[i].pid = 0;
+            }
+        }
+    }
+}
+
+void list_jobs() {
+
+    int found = 0;
+
+    reap_background();
+
+    for (int i = 0; i < MAX_JOBS; i++) {
+
+        if (jobs[i].pid != 0) {
+
+            printf("[%d] running %s\n", jobs[i].pid, jobs[i].cmd);
+            found = 1;
+        }
+    }
+
+    if (!found)
+        printf("No active jobs\n");
 }
 
 /* ---------- variables ---------- */
@@ -455,6 +533,14 @@ void run_pipeline(char *cmd) {
 
         if (strcmp(argv[0], "exit") == 0)
             exit(argv[1] ? atoi(argv[1]) : last_status);
+
+        if (strcmp(argv[0], "jobs") == 0) {
+
+            list_jobs();
+            last_status = 0;
+
+            return;
+        }
     }
 
     pid_t pids[MAX_STAGES];
@@ -550,8 +636,6 @@ void run_pipeline(char *cmd) {
 
         pids[s] = pid;
 
-        register_process(pid, current_user(), cmd);
-
         if (prev_read >= 0)
             close(prev_read);
 
@@ -564,17 +648,7 @@ void run_pipeline(char *cmd) {
 
     if (background) {
 
-        FILE *jf = fopen("/tmp/jobs", "a");
-
-        if (jf) {
-
-            fprintf(jf,
-                    "[%d] running %s\n",
-                    pids[stage_count - 1],
-                    cmd);
-
-            fclose(jf);
-        }
+        add_job(pids[stage_count - 1], cmd);
 
         printf("[background pid %d]\n",
                pids[stage_count - 1]);
@@ -596,8 +670,6 @@ void run_pipeline(char *cmd) {
             else if (WIFSIGNALED(status))
                 last_status = 128 + WTERMSIG(status);
         }
-
-        unregister_process(pids[s]);
     }
 }
 

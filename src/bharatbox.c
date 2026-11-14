@@ -26,7 +26,7 @@ void cmd_echo(int argc, char *argv[]) {
 
 void cmd_whoami() {
 
-    char *u = getenv("USER");
+    char *u = getenv("USER"); /* the real whoami is src/whoami.c */
 
     if (!u)
         u = "unknown";

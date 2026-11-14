@@ -1,8 +1,18 @@
+/*
+ * sudo <command>
+ *
+ * Runs one command as root after asking for the root password.
+ * The file /bin/sudo is "setuid root": the kernel starts it with root
+ * rights no matter who runs it, so it must check the password itself.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <termios.h>
+#include <grp.h>
+
+#include "libuser.h"
 
 int main(int argc, char *argv[]) {
 
@@ -13,81 +23,57 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char password[64];
+    if (geteuid() != 0) {
 
-    printf("sudo password: ");
-    fflush(stdout);
-
-    /* hide the password while it is typed */
-    struct termios old, hidden;
-    int has_terminal = tcgetattr(STDIN_FILENO, &old) == 0;
-
-    if (has_terminal) {
-
-        hidden = old;
-        hidden.c_lflag &= ~ECHO;
-
-        tcsetattr(STDIN_FILENO, TCSANOW, &hidden);
-    }
-
-    char *typed = fgets(password, sizeof(password), stdin);
-
-    if (has_terminal) {
-
-        tcsetattr(STDIN_FILENO, TCSANOW, &old);
-
-        printf("\n");
-    }
-
-    if (!typed)
-        return 1;
-
-    password[strcspn(password, "\n")] = 0;
-
-    FILE *f = fopen("/etc/passwd", "r");
-
-    if (!f) {
-
-        printf("Cannot open passwd database\n");
+        printf("sudo: not installed as setuid root\n");
 
         return 1;
     }
 
-    char line[128];
+    /* root does not need to prove anything */
+    if (getuid() != 0) {
 
-    while (fgets(line, sizeof(line), f)) {
+        char password[128];
 
-        line[strcspn(line, "\n")] = 0;
+        if (!read_hidden("root password: ", password, sizeof(password)))
+            return 1;
 
-        char *user = strtok(line, ":");
+        int ok = check_password("root", password);
 
-        char *pass = strtok(NULL, ":");
+        memset(password, 0, sizeof(password));
 
-        if (!user || !pass)
-            continue;
+        if (!ok) {
 
-        if (strcmp(user, "root") == 0 &&
-            strcmp(pass, password) == 0) {
+            sleep(2);
 
-            fclose(f);
-
-            setenv("USER", "root", 1);
-            setenv("LOGNAME", "root", 1);
-            setenv("HOME", "/home/root", 1);
-            setenv("PATH", "/bin:/usr/bin", 1);
-
-            /* execvp searches PATH, so "sudo ls" works like "sudo /bin/ls" */
-            execvp(argv[1], &argv[1]);
-
-            printf("sudo exec failed\n");
+            printf("sudo authentication failed\n");
 
             return 1;
         }
     }
 
-    fclose(f);
+    if (setgroups(0, NULL) != 0 ||
+        setgid(0) != 0 ||
+        setuid(0) != 0) {
 
-    printf("sudo authentication failed\n");
+        printf("sudo: cannot become root\n");
 
-    return 1;
+        return 1;
+    }
+
+    /* a clean environment: the caller must not smuggle in PATH tricks */
+    clearenv();
+
+    setenv("USER", "root", 1);
+    setenv("LOGNAME", "root", 1);
+    setenv("HOME", "/home/root", 1);
+    setenv("SHELL", "/bin/sh", 1);
+    setenv("PATH", "/bin:/usr/bin", 1);
+    setenv("TERM", "linux", 1);
+
+    execvp(argv[1], &argv[1]);
+
+    printf("sudo: command not found: %s\n", argv[1]);
+
+    return 127;
 }

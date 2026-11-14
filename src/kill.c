@@ -1,52 +1,50 @@
+/*
+ * kill <pid>        ask a process to stop (SIGTERM)
+ * kill -9 <pid>     force it to stop (SIGKILL)
+ *
+ * The kernel checks the permission: you may only signal your own
+ * processes, root may signal any.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
 #include <string.h>
-#include "libproc.h"
+#include <errno.h>
+#include <signal.h>
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 2) {
+    int sig = SIGTERM;
+    int at = 1;
 
-        printf("usage: kill <pid>\n");
+    if (argc > 2 && argv[1][0] == '-') {
+
+        sig = atoi(argv[1] + 1);
+        at = 2;
+    }
+
+    if (at >= argc || sig <= 0 || sig > 64) {
+
+        printf("usage: kill [-signal] <pid>\n");
 
         return 1;
     }
 
-    int pid = atoi(argv[1]);
+    int pid = atoi(argv[at]);
 
-    char owner[64];
+    if (pid <= 0) {
 
-    if (!process_owner(pid, owner)) {
-
-        printf("Unknown process\n");
+        printf("kill: invalid pid: %s\n", argv[at]);
 
         return 1;
     }
 
-    char *user = getenv("USER");
+    if (kill(pid, sig) != 0) {
 
-    if (!user)
-        user = "unknown";
-
-    if (strcmp(user, "root") != 0 &&
-        strcmp(user, owner) != 0) {
-
-        printf("Permission denied\n");
+        printf("kill: %d: %s\n", pid, strerror(errno));
 
         return 1;
     }
-
-    if (kill(pid, SIGKILL) != 0) {
-
-        printf("Kill failed\n");
-
-        return 1;
-    }
-
-    unregister_process(pid);
-
-    printf("Process killed\n");
 
     return 0;
 }

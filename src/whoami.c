@@ -1,14 +1,11 @@
 #include <stdio.h>
-#include <stdlib.h>
+
+#include "libuser.h"
 
 int main() {
 
-    char *user = getenv("USER");
-
-    if (user)
-        printf("%s\n", user);
-    else
-        printf("unknown\n");
+    /* ask the kernel who we are; the USER variable can be faked */
+    printf("%s\n", current_user_name());
 
     return 0;
 }

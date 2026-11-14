@@ -1,217 +1,96 @@
+/*
+ * Bharat-linux login.
+ *
+ * Asks for a name and password, checks them against /etc/shadow, then
+ * BECOMES that user (real uid and gid) before starting the shell. From
+ * that moment the kernel itself enforces what the user may touch.
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <termios.h>
+#include <grp.h>
 
-void trim(char *s) {
-
-    s[strcspn(s, "\n")] = 0;
-
-    s[strcspn(s, "\r")] = 0;
-}
-
-void disable_echo() {
-
-    struct termios t;
-
-    tcgetattr(STDIN_FILENO, &t);
-
-    t.c_lflag &= ~ECHO;
-
-    tcsetattr(STDIN_FILENO,
-              TCSANOW,
-              &t);
-}
-
-void enable_echo() {
-
-    struct termios t;
-
-    tcgetattr(STDIN_FILENO, &t);
-
-    t.c_lflag |= ECHO;
-
-    tcsetattr(STDIN_FILENO,
-              TCSANOW,
-              &t);
-}
-
-int authenticate(char *user,
-                 char *pass) {
-
-    FILE *f = fopen("/etc/passwd", "r");
-
-    if (!f) {
-
-        printf("Cannot open passwd database\n");
-
-        return 0;
-    }
-
-    char line[512];
-
-    while (fgets(line,
-                 sizeof(line),
-                 f)) {
-
-        trim(line);
-
-        char *username = strtok(line, ":");
-        char *password = strtok(NULL, ":");
-        char *uid      = strtok(NULL, ":");
-        char *gid      = strtok(NULL, ":");
-        char *home     = strtok(NULL, ":");
-        char *shell    = strtok(NULL, ":");
-
-        if (!username ||
-            !password ||
-            !uid ||
-            !gid ||
-            !home ||
-            !shell)
-            continue;
-
-        trim(username);
-        trim(password);
-
-        if (strcmp(user, username) == 0 &&
-            strcmp(pass, password) == 0) {
-
-            fclose(f);
-
-            return 1;
-        }
-    }
-
-    fclose(f);
-
-    return 0;
-}
-
-void load_user_environment(char *user) {
-
-    FILE *f = fopen("/etc/passwd", "r");
-
-    if (!f)
-        return;
-
-    char line[512];
-
-    while (fgets(line,
-                 sizeof(line),
-                 f)) {
-
-        trim(line);
-
-        char *username = strtok(line, ":");
-        char *password = strtok(NULL, ":");
-        char *uid      = strtok(NULL, ":");
-        char *gid      = strtok(NULL, ":");
-        char *home     = strtok(NULL, ":");
-        char *shell    = strtok(NULL, ":");
-
-        if (!username ||
-            !password ||
-            !uid ||
-            !gid ||
-            !home ||
-            !shell)
-            continue;
-
-        if (strcmp(user, username) == 0) {
-
-            setenv("USER",
-                   username,
-                   1);
-
-            setenv("LOGNAME",
-                   username,
-                   1);
-
-            setenv("HOME",
-                   home,
-                   1);
-
-            setenv("SHELL",
-                   shell,
-                   1);
-
-            if (chdir(home) != 0)
-                printf("Warning: cannot enter %s\n", home);
-
-            fclose(f);
-
-            return;
-        }
-    }
-
-    fclose(f);
-}
+#include "libuser.h"
 
 int main() {
 
-    char user[64];
-
-    char pass[64];
+    char name[64];
+    char pass[128];
 
     while (1) {
 
         printf("login: ");
-
         fflush(stdout);
 
         /* NULL means the terminal was closed: exit so init restarts us */
-        if (!fgets(user,
-                   sizeof(user),
-                   stdin))
+        if (!fgets(name, sizeof(name), stdin))
             return 1;
 
-        trim(user);
+        name[strcspn(name, "\r\n")] = 0;
 
-        if (user[0] == 0)
+        if (name[0] == 0)
             continue;
 
-        printf("password: ");
+        if (!read_hidden("password: ", pass, sizeof(pass)))
+            return 1;
 
-        fflush(stdout);
+        struct bharat_user user;
 
-        disable_echo();
+        int ok = find_user(name, 0, &user) &&
+                 check_password(name, pass);
 
-        if (!fgets(pass,
-                   sizeof(pass),
-                   stdin)) {
+        /* wipe the password from memory as soon as it is checked */
+        memset(pass, 0, sizeof(pass));
 
-            enable_echo();
+        if (!ok) {
+
+            /* the pause makes guessing passwords slow */
+            sleep(2);
+
+            printf("Login failed\n");
+
+            continue;
+        }
+
+        /* the user must own the terminal they are typing on */
+        if (fchown(STDIN_FILENO, user.uid, user.gid) != 0) {
+            /* not fatal: for example a serial console may refuse */
+        }
+
+        /*
+         * Drop root. The order matters: groups first, then gid, then uid.
+         * After setuid() we can never get root back.
+         */
+        if (setgroups(0, NULL) != 0 ||
+            setgid(user.gid) != 0 ||
+            setuid(user.uid) != 0) {
+
+            printf("Cannot switch to user %s\n", name);
 
             return 1;
         }
 
-        enable_echo();
+        clearenv();
 
-        printf("\n");
+        setenv("USER", user.name, 1);
+        setenv("LOGNAME", user.name, 1);
+        setenv("HOME", user.home, 1);
+        setenv("SHELL", user.shell, 1);
+        setenv("PATH", "/bin:/usr/bin", 1);
+        setenv("TERM", "linux", 1);
 
-        trim(pass);
+        if (chdir(user.home) != 0 && chdir("/") != 0)
+            return 1;
 
-        if (authenticate(user,
-                         pass)) {
+        printf("Welcome %s\n", user.name);
+        fflush(stdout);
 
-            load_user_environment(user);
+        execl(user.shell, user.shell, NULL);
 
-            printf("Welcome %s\n",
-                   user);
+        perror("shell failed");
 
-            execl("/bin/sh",
-                  "/bin/sh",
-                  NULL);
-
-            perror("shell failed");
-
-            exit(1);
-        }
-
-        printf("Login failed\n");
+        return 1;
     }
-
-    return 0;
 }
