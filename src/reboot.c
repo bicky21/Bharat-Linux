@@ -1,18 +1,27 @@
+/*
+ * reboot - stop every program cleanly, save to disk, then restart.
+ * Only root can do this; other users: sudo reboot
+ */
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/reboot.h>
-#include <sys/mount.h>
+
+#include "libshutdown.h"
 
 int main() {
 
-    sync();
+    if (geteuid() != 0) {
 
-    /* make the disk read-only first so nothing is half-written */
-    mount(NULL, "/", NULL, MS_REMOUNT | MS_RDONLY, NULL);
+        printf("Only root can restart. Use: sudo reboot\n");
+        return 1;
+    }
+
+    shut_down_cleanly();
 
     reboot(RB_AUTOBOOT);
 
-    printf("Only root can reboot. Use: sudo reboot\n");
+    printf("reboot failed\n");
 
     return 1;
 }

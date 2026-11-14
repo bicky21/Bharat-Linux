@@ -51,7 +51,8 @@ DESKTOP_HDR := $(wildcard src/desktop/*.h)
 
 # folders the system needs at boot (git cannot store empty folders)
 DIRS := rootfs/bin rootfs/dev rootfs/proc rootfs/sys rootfs/run rootfs/tmp \
-        rootfs/etc/tasks rootfs/var/log rootfs/var/lib/bpm rootfs/packages \
+        rootfs/etc/tasks rootfs/var/log rootfs/var/lib/bpm rootfs/var/lib/bharat \
+        rootfs/packages \
         images
 
 KERNEL_RELEASE := $(shell uname -r)

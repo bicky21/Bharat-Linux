@@ -50,7 +50,9 @@ make            # 1. compile every program in src/ into rootfs/
 The boot screen appears, then the login screen: type the password and
 press Enter. Shut down from the start menu: **Power off**.
 
-Passwords: `bicky` / `1234`, `root` / `x`.
+**First start:** the "Create your account" screen appears. Choose a user
+name and a password (8 or more characters). This account is an
+administrator. No password ships inside Bharat Linux.
 
 These two passwords are public defaults. Change them with `passwd` before
 using the system for anything real.
@@ -84,7 +86,9 @@ Networking: inside Bharat-linux, as root: `service modules`, then
 2. `init` starts `devd` (drivers, device permissions) and the services.
 3. `init` starts `greeter` (`src/greeter/`), which shows the animated boot
    screen (the logo fades in, three dots pulse) while the drivers load.
-4. The logo glides up into the graphical login screen. It has **Restart**,
+4. On the very first start, a "Create your account" screen instead
+   (see "Users and security"). After that, the logo glides up into the
+   graphical login screen. It has **Restart**,
    **Power off** and **Text mode** (the old text login; type `exit` there
    to come back).
 5. After the password, `greeter` starts the desktop as that user.
@@ -129,7 +133,7 @@ How it fits together:
 2. `devd` (started by `init`) loads the mouse drivers listed in
    `/etc/modules` and gives the devices in `/etc/devices` to the `video`
    and `input` groups.
-3. `login` puts `bicky` in those groups (`/etc/group`), so the desktop
+3. Every user is in those groups (`/etc/group`), so the desktop
    runs as a normal user, not as root.
 
 The fonts are turned into C tables by `tools/make-fonts.py`
@@ -194,19 +198,42 @@ Compiled programs and kernel modules are **not** stored in git any more.
 
 ## Users and security
 
-- `login` checks the password, then switches to the user's real uid and
-  gid. From then on the Linux kernel enforces every file permission.
-- Passwords are stored only as salted SHA-512 hashes in `/etc/shadow`,
-  which only root can read.
-- `sudo <command>` runs one command as root. `passwd` changes a password.
-- `ps` and `kill` work on the kernel's real process list.
-- Root owns the system files; each user owns only their home folder.
+Bharat Linux handles accounts the way Ubuntu and Fedora do:
+
+- **No built-in passwords.** On the first start, you create your own
+  account (graphical screen, or questions on the text console).
+- **Root is locked.** Nobody can log in as `root`. Administrators use
+  `sudo` with **their own** password; only members of the `wheel` group
+  may. After a correct password, `sudo` does not ask again for 5 minutes
+  (`sudo -k` forgets it at once). To allow root logins anyway:
+  `sudo passwd root`.
+- **Passwords** are stored only as salted SHA-512 hashes in
+  `/etc/shadow` (root-only), need at least 8 characters, and are never
+  shown while typing. Wrong passwords cost a 2-second pause.
+- **Every login, failed login, sudo use and account change** is written
+  to `/var/log/auth.log` (root-only): `sudo cat /var/log/auth.log`.
+- `login` and the login screen switch to the user's real uid and groups,
+  so the Linux kernel enforces every file permission.
+- **Clean shutdown:** `poweroff` and `reboot` ask every program to stop,
+  wait up to 5 seconds, save everything to disk and make it read-only.
+
+| Command | What it does |
+|---------|--------------|
+| `sudo useradd meera` | new user (`-a`: administrator) |
+| `sudo passwd meera` | set or change a password |
+| `passwd` | change your own password |
+| `sudo passwd -l meera` / `-u` | lock / unlock an account |
+| `passwd -S` | is my account usable? |
+| `sudo usermod -aG wheel meera` | make an administrator (`-rG` removes) |
+| `sudo userdel -r meera` | delete a user and the home folder |
+
+New users get a copy of `/etc/skel` as their home folder. The last
+administrator cannot be deleted.
 
 ## Known limits (honest list)
 
-- No `adduser` yet: new users are added by editing `/etc/passwd` and
-  running `passwd <name>` as root.
-- `sudo` asks for the root password and has no per-user rules.
+- `sudo` rules are all-or-nothing: an administrator may run anything.
+- No disk encryption and no firewall yet.
 - `nano` can only write a new file line by line; it cannot edit.
 - `ping` is a TCP connection test, not real ICMP.
 - `rootfs/advanced.sh` and `rootfs/check.sh` use syntax (`function`, `loop`,

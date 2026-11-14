@@ -11,12 +11,59 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "libuser.h"
+#include "libaccount.h"
+
+static int ask(const char *prompt, char *out, size_t size) {
+
+    printf("%s", prompt);
+    fflush(stdout);
+
+    if (!fgets(out, size, stdin))
+        return 0;
+
+    out[strcspn(out, "\r\n")] = 0;
+
+    return 1;
+}
+
+/* First start-up without a screen: create the administrator account. */
+static int text_setup(void) {
+
+    char name[64], pass[128], repeat[128], host[64];
+
+    printf("\nWelcome to Bharat Linux. Let's create your account.\n"
+           "It will be an administrator: it can use sudo.\n\n");
+
+    while (1) {
+
+        if (!ask("Your user name (small letters): ", name, sizeof(name)) ||
+            !read_hidden("Password (8 or more characters): ", pass, sizeof(pass)) ||
+            !read_hidden("Repeat the password: ", repeat, sizeof(repeat)) ||
+            !ask("Computer name [bharat-pc]: ", host, sizeof(host)))
+            return 0;
+
+        const char *err = setup_first_account(name, pass, repeat, host[0] ? host : "bharat-pc");
+
+        memset(pass, 0, sizeof(pass));
+        memset(repeat, 0, sizeof(repeat));
+
+        if (!err) {
+
+            printf("\nAccount %s created. Log in with it now.\n\n", name);
+            return 1;
+        }
+
+        printf("%s Please try again.\n\n", err);
+    }
+}
 
 int main() {
 
     char name[64];
     char pass[128];
+
+    if (first_boot() && !text_setup())
+        return 1;
 
     while (1) {
 
@@ -45,6 +92,8 @@ int main() {
 
         if (!ok) {
 
+            auth_log("login: FAILED for %s (text console)", name);
+
             /* the pause makes guessing passwords slow */
             sleep(2);
 
@@ -52,6 +101,8 @@ int main() {
 
             continue;
         }
+
+        auth_log("login: %s logged in (text console)", name);
 
         /* the user must own the terminal they are typing on */
         if (fchown(STDIN_FILENO, user.uid, user.gid) != 0) {

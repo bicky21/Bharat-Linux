@@ -461,9 +461,10 @@ static inline int read_hidden(const char *prompt,
     struct termios old, hidden;
     int has_terminal = tcgetattr(STDIN_FILENO, &old) == 0;
 
-    printf("%s", prompt);
-    fflush(stdout);
-
+    /*
+     * Hide the typing BEFORE showing the prompt. The other way round,
+     * letters typed right after the prompt appears would still show.
+     */
     if (has_terminal) {
 
         hidden = old;
@@ -471,6 +472,9 @@ static inline int read_hidden(const char *prompt,
 
         tcsetattr(STDIN_FILENO, TCSANOW, &hidden);
     }
+
+    printf("%s", prompt);
+    fflush(stdout);
 
     char *typed = fgets(out, size, stdin);
 
