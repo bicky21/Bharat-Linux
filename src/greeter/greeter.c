@@ -24,12 +24,13 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <math.h>
 #include <linux/kd.h>
 
 #include "../desktop/desktop.h"
-#include "../libuser.h"
+#include "../libaccount.h"
 
 #define BG_TOP    0x04060B          /* the logo's own background colour */
 #define BG_BOTTOM 0x0E1B30
@@ -44,7 +45,6 @@ static struct image *logo, *badge;
 
 static char username[64];
 static char password[128];
-static int focus = 1;                /* 0 = user name box, 1 = password box */
 static char message[128];
 static int session_ran;              /* the devices were closed and opened again */
 
@@ -266,40 +266,65 @@ static void glide_to_login(void) {
     }
 }
 
-/* ---------- the login screen ---------- */
+/* ---------- forms: the login screen and the first-start setup ---------- */
 
 struct box { int x, y, w, h; };
 
-struct layout {
-    struct box card, user, pass, login, text_mode, restart, poweroff;
-    int top;              /* where the card starts */
+#define MAX_FIELDS 4
+
+struct form {
+    const char *title;
+    const char *subtitle;           /* may be NULL */
+    const char *button;
+    int count;
+    const char *labels[MAX_FIELDS];
+    char *values[MAX_FIELDS];
+    size_t sizes[MAX_FIELDS];
+    int secret[MAX_FIELDS];
+    int big_logo;                   /* the full logo above the card */
+    void (*submit)(void);
 };
 
-static struct layout layout(void) {
+static struct form *form;          /* the form on the screen now */
+static int focus;                  /* which field gets the keys */
 
-    struct layout l;
-    int cw = 340;
+static int inside_box(struct box b) {
 
-    /* the logo on top if there is room, otherwise the small badge */
-    int top = logo && screen_h >= 700 ? 26 + logo->h : 150;
-
-    l.top = top;
-    l.card = (struct box){(screen_w - cw) / 2, top + 4, cw, 226};
-
-    int fx = l.card.x + 20, fw = cw - 40;
-
-    l.user  = (struct box){fx, l.card.y + 58, fw, 34};
-    l.pass  = (struct box){fx, l.card.y + 118, fw, 34};
-    l.login = (struct box){fx, l.card.y + 170, fw, 38};
-
-    int by = screen_h - 54;
-
-    l.text_mode = (struct box){20, by, 110, 34};
-    l.poweroff  = (struct box){screen_w - 20 - 110, by, 110, 34};
-    l.restart   = (struct box){screen_w - 20 - 230, by, 110, 34};
-
-    return l;
+    return inside(mouse_x, mouse_y, b.x, b.y, b.w, b.h);
 }
+
+static int form_top(void) {
+
+    return form->big_logo && logo && screen_h >= 700 ? 30 + logo->h : 140;
+}
+
+static struct box card_box(void) {
+
+    int w = 360;
+    int fields_y = (form->subtitle ? 82 : 58);
+    int h = fields_y + form->count * 60 + 18 + 38 + 20 - 26;
+
+    return (struct box){(screen_w - w) / 2, form_top(), w, h};
+}
+
+static struct box field_box(int i) {
+
+    struct box c = card_box();
+
+    return (struct box){c.x + 20, c.y + (form->subtitle ? 82 : 58) + i * 60, c.w - 40, 34};
+}
+
+static struct box submit_box(void) {
+
+    struct box last = field_box(form->count - 1);
+
+    return (struct box){last.x, last.y + last.h + 18, last.w, 38};
+}
+
+/* the buttons along the bottom of the screen */
+static struct box text_mode_box(void) { return (struct box){20, screen_h - 54, 110, 34}; }
+static struct box restart_box(void)   { return (struct box){screen_w - 250, screen_h - 54, 110, 34}; }
+static struct box poweroff_box(void)  { return (struct box){screen_w - 130, screen_h - 54, 110, 34}; }
 
 static void button(struct box b, const char *label, uint32_t fill_color, uint32_t text_color) {
 
@@ -315,36 +340,42 @@ static void field(struct box b, const char *value, int secret, int focused) {
     fill_round(b.x, b.y, b.w, b.h, 7, focused ? C_SAFFRON : FIELD_LINE);
     fill_round(b.x + 1, b.y + 1, b.w - 2, b.h - 2, 6, FIELD);
 
-    int tx = b.x + 12, ty = b.y + (b.h - font_ui.height) / 2;
+    int room = b.w - 28;
+    int n = (int)strlen(value);
+    int width = secret ? n * 12 : text_width(&font_ui, value);
+
+    /* text longer than the box: slide it left so the end stays visible */
+    int tx = b.x + 12 - (width > room ? width - room : 0);
+    int ty = b.y + (b.h - font_ui.height) / 2;
+
+    gfx_clip(b.x + 6, b.y, b.w - 12, b.h);
 
     if (secret) {
 
         /* one dot per letter: the password itself is never drawn */
-        int n = (int)strlen(value);
-
-        for (int i = 0; i < n && 12 + i * 12 < b.w - 20; i++)
+        for (int i = 0; i < n; i++)
             fill_circle(tx + 4 + i * 12, b.y + b.h / 2, 4, C_WHITE);
-
-        tx += n * 12;
     }
     else {
 
-        tx += text(&font_ui, tx, ty, value, C_WHITE);
+        text(&font_ui, tx, ty, value, C_WHITE);
     }
+
+    tx += width;
 
     /* the text cursor */
     if (focused)
         fill(tx + 2, b.y + 8, 2, b.h - 16, C_SAFFRON);
+
+    gfx_noclip();
 }
 
 static void draw_login(void) {
 
-    struct layout l = layout();
-
     gfx_area(0, 0, screen_w, screen_h);
     gradient(0, 0, screen_w, screen_h, BG_TOP, BG_BOTTOM);
 
-    if (logo && screen_h >= 700)
+    if (form->big_logo && logo && screen_h >= 700)
         draw_image(logo, logo_x(), 14);
     else if (badge)
         draw_image(badge, (screen_w - badge->w) / 2, 30);
@@ -362,24 +393,31 @@ static void draw_login(void) {
     strftime(clock_text, sizeof(clock_text), "%a %d %b  %H:%M", tm);
     text(&font_bold, screen_w - 20 - text_width(&font_bold, clock_text), 16, clock_text, 0xC9D1D9);
 
-    /* the card */
-    fill_round(l.card.x, l.card.y, l.card.w, l.card.h, 12, CARD);
-    text(&font_bold, l.card.x + 20, l.card.y + 14, "Sign in", C_WHITE);
+    /* the card with the form */
+    struct box c = card_box();
 
-    text(&font_ui, l.user.x, l.user.y - 20, "User name", 0x8B949E);
-    field(l.user, username, 0, focus == 0);
+    fill_round(c.x, c.y, c.w, c.h, 12, CARD);
+    text(&font_bold, c.x + 20, c.y + 14, form->title, C_WHITE);
 
-    text(&font_ui, l.pass.x, l.pass.y - 20, "Password", 0x8B949E);
-    field(l.pass, password, 1, focus == 1);
+    if (form->subtitle)
+        text(&font_ui, c.x + 20, c.y + 36, form->subtitle, 0x8B949E);
 
-    button(l.login, "Log in", C_SAFFRON, 0x1A1205);
+    for (int i = 0; i < form->count; i++) {
+
+        struct box b = field_box(i);
+
+        text(&font_ui, b.x, b.y - 20, form->labels[i], 0x8B949E);
+        field(b, form->values[i], form->secret[i], focus == i);
+    }
+
+    button(submit_box(), form->button, C_SAFFRON, 0x1A1205);
 
     if (message[0])
-        center_text(&font_ui, l.card.y + l.card.h + 14, message, 0xFF7B72);
+        center_text(&font_ui, c.y + c.h + 14, message, 0xFF7B72);
 
-    button(l.text_mode, "Text mode", 0x1F2937, 0xC9D1D9);
-    button(l.restart, "Restart", 0x1F2937, 0xC9D1D9);
-    button(l.poweroff, "Power off", 0x7A1F1F, C_WHITE);
+    button(text_mode_box(), "Text mode", 0x1F2937, 0xC9D1D9);
+    button(restart_box(), "Restart", 0x1F2937, 0xC9D1D9);
+    button(poweroff_box(), "Power off", 0x7A1F1F, C_WHITE);
 
     /* remember the picture without the pointer, to move it cheaply */
     save_background();
@@ -502,6 +540,50 @@ static void after_session(int code) {
         power(code);
 }
 
+/* the user who logged in last is filled in next time */
+#define LAST_USER_FILE "/var/lib/bharat/last-user"
+
+static void save_last_user(const char *name) {
+
+    mkdir("/var/lib/bharat", 0755);
+
+    FILE *f = fopen(LAST_USER_FILE, "w");
+
+    if (f) {
+
+        fprintf(f, "%s\n", name);
+        fclose(f);
+    }
+}
+
+static void load_last_user(char *out, size_t size) {
+
+    FILE *f = fopen(LAST_USER_FILE, "r");
+    struct bharat_user u;
+
+    out[0] = 0;
+
+    if (f) {
+
+        if (fgets(out, (int)size, f))
+            out[strcspn(out, "\r\n")] = 0;
+
+        fclose(f);
+    }
+
+    /* the user may have been deleted since */
+    if (!out[0] || !find_user(out, 0, &u))
+        first_user(out, size);
+}
+
+static void login_as(struct bharat_user *user) {
+
+    message[0] = 0;
+    save_last_user(user->name);
+    session_ran = 1;
+    after_session(run_session(user));
+}
+
 static void try_login(void) {
 
     struct bharat_user user;
@@ -515,6 +597,7 @@ static void try_login(void) {
 
     if (!ok) {
 
+        auth_log("login: FAILED for %s (login screen)", username);
         snprintf(message, sizeof(message), "Wrong user name or password.");
         focus = 1;
         draw_login();
@@ -524,10 +607,61 @@ static void try_login(void) {
         return;
     }
 
-    message[0] = 0;
-    session_ran = 1;
-    after_session(run_session(&user));
+    auth_log("login: %s logged in (login screen)", username);
+    login_as(&user);
 }
+
+static struct form login_form = {
+    "Sign in", NULL, "Log in", 2,
+    {"User name", "Password"},
+    {username, password},
+    {sizeof(username), sizeof(password)},
+    {0, 1},
+    1, try_login
+};
+
+/* ---------- first start-up: create the administrator account ---------- */
+
+static char new_name[64], new_pass[128], new_repeat[128], new_host[64] = "bharat-pc";
+
+static void create_account(void) {
+
+    const char *err = setup_first_account(new_name, new_pass, new_repeat, new_host);
+
+    memset(new_pass, 0, sizeof(new_pass));
+    memset(new_repeat, 0, sizeof(new_repeat));
+
+    if (err) {
+
+        snprintf(message, sizeof(message), "%s", err);
+        focus = 0;
+        return;
+    }
+
+    /* from now on: the normal login screen, and straight into the desktop */
+    snprintf(username, sizeof(username), "%s", new_name);
+    form = &login_form;
+    focus = 1;
+
+    struct bharat_user user;
+
+    if (find_user(new_name, 0, &user)) {
+
+        auth_log("login: %s logged in after creating the account", new_name);
+        login_as(&user);
+    }
+}
+
+static struct form setup_form = {
+    "Welcome! Create your account",
+    "It can manage this computer (administrator).",
+    "Create account", 4,
+    {"User name (small letters)", "Password (8 or more characters)", "Repeat the password", "Computer name"},
+    {new_name, new_pass, new_repeat, new_host},
+    {sizeof(new_name), sizeof(new_pass), sizeof(new_repeat), sizeof(new_host)},
+    {0, 1, 1, 0},
+    0, create_account
+};
 
 static void leave_to_text_mode(void) {
 
@@ -544,20 +678,25 @@ static void leave_to_text_mode(void) {
 
 static void key_press(struct event *ev) {
 
-    char *value = focus == 0 ? username : password;
-    size_t size = focus == 0 ? sizeof(username) : sizeof(password);
+    char *value = form->values[focus];
+    size_t size = form->sizes[focus];
     size_t len = strlen(value);
 
-    if (ev->key == '\t' || ev->key == K_UP || ev->key == K_DOWN) {
+    if (ev->key == '\t' || ev->key == K_DOWN) {
 
-        focus = !focus;
+        focus = (focus + 1) % form->count;
+    }
+    else if (ev->key == K_UP) {
+
+        focus = (focus + form->count - 1) % form->count;
     }
     else if (ev->key == '\r') {
 
-        if (focus == 0)
-            focus = 1;
+        /* Enter: next box, or send the form from the last one */
+        if (focus < form->count - 1)
+            focus++;
         else
-            try_login();
+            form->submit();
     }
     else if (ev->key == '\b') {
 
@@ -566,7 +705,9 @@ static void key_press(struct event *ev) {
     }
     else if (ev->key == 27) {
 
-        memset(password, 0, sizeof(password));
+        for (int i = 0; i < form->count; i++)
+            if (form->secret[i])
+                memset(form->values[i], 0, form->sizes[i]);
     }
     else if (ev->key >= 32 && ev->key < 127 && len + 1 < size) {
 
@@ -577,19 +718,22 @@ static void key_press(struct event *ev) {
 
 static void click(void) {
 
-    struct layout l = layout();
+    for (int i = 0; i < form->count; i++) {
 
-    if (inside(mouse_x, mouse_y, l.user.x, l.user.y, l.user.w, l.user.h))
-        focus = 0;
-    else if (inside(mouse_x, mouse_y, l.pass.x, l.pass.y, l.pass.w, l.pass.h))
-        focus = 1;
-    else if (inside(mouse_x, mouse_y, l.login.x, l.login.y, l.login.w, l.login.h))
-        try_login();
-    else if (inside(mouse_x, mouse_y, l.restart.x, l.restart.y, l.restart.w, l.restart.h))
+        if (inside_box(field_box(i))) {
+
+            focus = i;
+            return;
+        }
+    }
+
+    if (inside_box(submit_box()))
+        form->submit();
+    else if (inside_box(restart_box()))
         power(EXIT_REBOOT);
-    else if (inside(mouse_x, mouse_y, l.poweroff.x, l.poweroff.y, l.poweroff.w, l.poweroff.h))
+    else if (inside_box(poweroff_box()))
         power(EXIT_POWEROFF);
-    else if (inside(mouse_x, mouse_y, l.text_mode.x, l.text_mode.y, l.text_mode.w, l.text_mode.h))
+    else if (inside_box(text_mode_box()))
         leave_to_text_mode();
 }
 
@@ -635,9 +779,18 @@ int main(void) {
     if (autologin[0])
         snprintf(username, sizeof(username), "%s", autologin);
     else
-        first_user(username, sizeof(username));
+        load_last_user(username, sizeof(username));
 
+    form = &login_form;
     focus = username[0] ? 1 : 0;
+
+    /* first start-up: nobody can log in yet, so create the account */
+    if (first_boot()) {
+
+        form = &setup_form;
+        focus = 0;
+        autologin[0] = 0;
+    }
 
     /*
      * Automatic login happens once per start-up, not after logging out.
@@ -661,7 +814,7 @@ int main(void) {
     }
 
     /* coming from the boot screen: a smooth change to the login screen */
-    if (!session_ran)
+    if (!session_ran && form == &login_form)
         glide_to_login();
 
     draw_login();

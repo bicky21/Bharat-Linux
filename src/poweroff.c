@@ -1,18 +1,27 @@
+/*
+ * poweroff - stop every program cleanly, save to disk, then power off.
+ * Only root can do this; other users: sudo poweroff
+ */
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/reboot.h>
-#include <sys/mount.h>
+
+#include "libshutdown.h"
 
 int main() {
 
-    sync();
+    if (geteuid() != 0) {
 
-    /* make the disk read-only first so nothing is half-written */
-    mount(NULL, "/", NULL, MS_REMOUNT | MS_RDONLY, NULL);
+        printf("Only root can power off. Use: sudo poweroff\n");
+        return 1;
+    }
+
+    shut_down_cleanly();
 
     reboot(RB_POWER_OFF);
 
-    printf("Only root can power off. Use: sudo poweroff\n");
+    printf("poweroff failed\n");
 
     return 1;
 }
