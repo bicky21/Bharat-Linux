@@ -456,11 +456,91 @@ int text(struct font *f, int x, int y, const char *s, uint32_t c) {
     return text_alpha(f, x, y, s, c, 255);
 }
 
+/* ---------- pictures ---------- */
+
+/*
+ * Loads a .img file (made by tools/make-logo.py): width, height, then
+ * red, green, blue, alpha for every pixel. Returns NULL if it is missing.
+ */
+struct image *image_load(const char *path) {
+
+    FILE *f = fopen(path, "rb");
+
+    if (!f)
+        return NULL;
+
+    uint32_t size[2];
+    struct image *img = NULL;
+
+    if (fread(size, 4, 2, f) == 2 &&
+        size[0] > 0 && size[0] <= 4096 && size[1] > 0 && size[1] <= 4096) {
+
+        img = malloc(sizeof(*img));
+
+        if (img) {
+
+            img->w = (int)size[0];
+            img->h = (int)size[1];
+            img->px = malloc((size_t)img->w * img->h * 4);
+
+            if (!img->px ||
+                fread(img->px, 4, (size_t)img->w * img->h, f) != (size_t)img->w * img->h) {
+
+                free(img->px);
+                free(img);
+                img = NULL;
+            }
+        }
+    }
+
+    fclose(f);
+
+    return img;
+}
+
+void draw_image(struct image *img, int x, int y) {
+
+    if (!img || !gfx_visible(x, y, img->w, img->h))
+        return;
+
+    for (int j = 0; j < img->h; j++) {
+
+        const uint8_t *p = img->px + (size_t)j * img->w * 4;
+
+        for (int i = 0; i < img->w; i++, p += 4) {
+
+            if (p[3])
+                put_pixel(x + i, y + j, ((uint32_t)p[0] << 16) | (p[1] << 8) | p[2], p[3]);
+        }
+    }
+}
+
 /* ---------- logo and mouse pointer ---------- */
 
-/* Bharat-linux logo: a saffron tile with a white "B". */
+#define LOGO_DIR "/usr/share/bharat/"
+
+/* The round penguin badge from the Bharat Linux logo. */
 void draw_logo(int x, int y, int size) {
 
+    static struct image *small, *medium;
+    static int loaded;
+
+    if (!loaded) {
+
+        small = image_load(LOGO_DIR "mark26.img");
+        medium = image_load(LOGO_DIR "mark42.img");
+        loaded = 1;
+    }
+
+    struct image *img = size <= 30 ? small : medium;
+
+    if (img && img->w <= size + 4) {
+
+        draw_image(img, x + (size - img->w) / 2, y + (size - img->h) / 2);
+        return;
+    }
+
+    /* no picture installed: a saffron tile with a white "B" */
     int r = size / 4;
 
     fill_round(x, y, size, size, r, C_SAFFRON_D);

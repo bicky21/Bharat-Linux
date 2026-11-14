@@ -1,4 +1,6 @@
-# Bharat-linux
+# Bharat Linux
+
+<img src="docs/logo.png" alt="Bharat Linux logo" width="420">
 
 A small operating system project from India. The goal is an indigenous OS:
 every part that the user touches is written here, from scratch, in C.
@@ -9,7 +11,8 @@ every part that the user touches is written here, from scratch, in C.
 |------|---------------------|
 | Kernel | The Linux kernel of your PC (`/boot/vmlinuz-<version>`) |
 | `init` (first program, PID 1) | Written here: `src/init.c` |
-| Login | Written here: `src/login.c` |
+| Boot screen and graphical login (`greeter`) | Written here: `src/greeter/` |
+| Text login | Written here: `src/login.c` |
 | Shell (`bharat-shell`) | Written here: `src/sh.c` |
 | More than 50 commands (`ls`, `cat`, `ps`, `kill`, `bpm`, ...) | Written here: `src/*.c` |
 | Graphical desktop (`desktop`) | Written here: `src/desktop/` |
@@ -17,10 +20,13 @@ every part that the user touches is written here, from scratch, in C.
 | Network helpers (`ip`, `udhcpc`) | BusyBox (ready-made, to be replaced) |
 
 So right now this is **our own userland on top of the Linux kernel**.
-It boots in QEMU to a login prompt, and `desktop` starts our own graphical
-desktop.
+It boots like a normal Linux system: boot screen with the logo, then the
+desktop (logged in automatically), with a graphical login screen after
+logging out.
 
-![Bharat Desktop](docs/desktop.png)
+| Boot | Login | Desktop |
+|------|-------|---------|
+| ![Boot screen](docs/boot.png) | ![Login screen](docs/login.png) | ![Bharat Desktop](docs/desktop.png) |
 
 ## Build and run
 
@@ -42,9 +48,10 @@ make            # 1. compile every program in src/ into rootfs/
 ./run.sh        # 3. boot it in QEMU
 ```
 
-Log in with user `bicky`, password `1234` (or `root` / `x`).
-Type `desktop` to start the graphical desktop.
-Type `sudo poweroff` to shut down (it asks for the root password).
+The boot screen appears, then the desktop opens by itself (user `bicky`
+is logged in automatically). Shut down from the start menu: **Power off**.
+
+Passwords: `bicky` / `1234`, `root` / `x`.
 
 These two passwords are public defaults. Change them with `passwd` before
 using the system for anything real.
@@ -72,6 +79,28 @@ make modules
 Networking: inside Bharat-linux, as root: `service modules`, then
 `service network`.
 
+## How it starts
+
+1. The kernel starts `init` (`src/init.c`).
+2. `init` starts `devd` (drivers, device permissions) and the services.
+3. `init` starts `greeter` (`src/greeter/`), which shows the boot screen
+   with the logo while the drivers load.
+4. `greeter` logs in the user named in `/etc/greeter.conf`
+   (`autologin=bicky`) and starts the desktop as that user.
+5. **Log out** (start menu) brings the graphical login screen. It has
+   **Restart**, **Power off** and **Text mode** (the old text login; type
+   `exit` there to come back).
+
+Without a graphics screen (`./run.sh text`), `init` starts the text login
+instead.
+
+To always ask for a password, remove the `autologin=bicky` line from
+`rootfs/etc/greeter.conf` and run `./rebuild.sh`. Anyone who can use the
+computer gets into `bicky`'s account while automatic login is on.
+
+The logo pictures in `rootfs/usr/share/bharat/` are made from
+`docs/logo.png` by `tools/make-logo.py`.
+
 ## Bharat Desktop
 
 Our own graphical desktop, written from scratch in C (`src/desktop/`).
@@ -91,7 +120,7 @@ There is no X11, no Wayland and no toolkit underneath.
 | Ctrl+Alt+T | New terminal |
 | Alt+Tab | Switch window |
 | Alt+F4 | Close the window |
-| Ctrl+Alt+Backspace | Leave the desktop (back to the text console) |
+| Ctrl+Alt+Backspace | Log out (or, if started from a shell, back to it) |
 
 How it fits together:
 

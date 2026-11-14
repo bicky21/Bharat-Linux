@@ -10,7 +10,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <grp.h>
 
 #include "libuser.h"
 
@@ -59,50 +58,12 @@ int main() {
             /* not fatal: for example a serial console may refuse */
         }
 
-        /*
-         * Drop root. The order matters: groups first, then gid, then uid.
-         * The extra groups (from /etc/group) decide for example who may
-         * use the screen (video) and the mouse (input).
-         * After setuid() we can never get root back.
-         */
-        gid_t groups[32];
-        int group_count = user_groups(user.name, groups, 32);
-
-        if (setgroups(group_count, groups) != 0 ||
-            setgid(user.gid) != 0 ||
-            setuid(user.uid) != 0) {
+        if (become_user(&user) != 0) {
 
             printf("Cannot switch to user %s\n", name);
 
             return 1;
         }
-
-        clearenv();
-
-        setenv("USER", user.name, 1);
-        setenv("LOGNAME", user.name, 1);
-        setenv("HOME", user.home, 1);
-        setenv("SHELL", user.shell, 1);
-        setenv("PATH", "/bin:/usr/bin", 1);
-        setenv("TERM", "linux", 1);
-
-        /* the time zone, written like "IST-5:30" (5:30 ahead of UTC) */
-        FILE *tz = fopen("/etc/timezone", "r");
-        char zone[64];
-
-        if (tz) {
-
-            if (fgets(zone, sizeof(zone), tz)) {
-
-                zone[strcspn(zone, "\r\n")] = 0;
-                setenv("TZ", zone, 1);
-            }
-
-            fclose(tz);
-        }
-
-        if (chdir(user.home) != 0 && chdir("/") != 0)
-            return 1;
 
         printf("Welcome %s\n", user.name);
 

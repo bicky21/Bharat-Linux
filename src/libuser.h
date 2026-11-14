@@ -393,6 +393,64 @@ static inline int user_groups(const char *user,
     return count;
 }
 
+/* Sets TZ from /etc/timezone, written like "IST-5:30" (5:30 ahead of UTC). */
+static inline void load_timezone(void) {
+
+    FILE *tz = fopen("/etc/timezone", "r");
+    char zone[64];
+
+    if (!tz)
+        return;
+
+    if (fgets(zone, sizeof(zone), tz)) {
+
+        zone[strcspn(zone, "\r\n")] = 0;
+        setenv("TZ", zone, 1);
+    }
+
+    fclose(tz);
+}
+
+/*
+ * Turns this (root) process into the given user, for good:
+ * groups, ids, environment, home folder. Used by login and greeter.
+ * Returns 0 if it worked.
+ */
+#include <grp.h>
+
+static inline int become_user(const struct bharat_user *user) {
+
+    /*
+     * Drop root. The order matters: groups first, then gid, then uid.
+     * The extra groups (from /etc/group) decide for example who may
+     * use the screen (video) and the mouse (input).
+     * After setuid() we can never get root back.
+     */
+    gid_t groups[32];
+    int group_count = user_groups(user->name, groups, 32);
+
+    if (setgroups(group_count, groups) != 0 ||
+        setgid(user->gid) != 0 ||
+        setuid(user->uid) != 0)
+        return -1;
+
+    clearenv();
+
+    setenv("USER", user->name, 1);
+    setenv("LOGNAME", user->name, 1);
+    setenv("HOME", user->home, 1);
+    setenv("SHELL", user->shell, 1);
+    setenv("PATH", "/bin:/usr/bin", 1);
+    setenv("TERM", "linux", 1);
+
+    load_timezone();
+
+    if (chdir(user->home) != 0 && chdir("/") != 0)
+        return -1;
+
+    return 0;
+}
+
 /* Reads a line from the keyboard without showing it. Returns 1 if ok. */
 #include <termios.h>
 

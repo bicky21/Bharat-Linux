@@ -171,10 +171,43 @@ void input_watch_read(void) {
     input_rescan();
 }
 
+/*
+ * Lend the keyboard and mouse to another program (the desktop) without
+ * closing them. Closing would make the USB tablet look unused for a
+ * moment, and QEMU would then switch the pointer to the PS/2 mouse.
+ */
+void input_release(void) {
+
+    for (int i = 0; i < device_count; i++)
+        ioctl(devices[i].fd, EVIOCGRAB, 0);
+}
+
+/* Take them back, and throw away everything typed meanwhile. */
+void input_take(void) {
+
+    struct input_event junk[64];
+
+    for (int i = 0; i < device_count; i++) {
+
+        while (read(devices[i].fd, junk, sizeof(junk)) > 0) {
+            /* old events: the desktop already handled them */
+        }
+
+        ioctl(devices[i].fd, EVIOCGRAB, 1);
+    }
+
+    shift = ctrl = alt = 0;
+
+    input_rescan();
+}
+
 void input_close(void) {
 
     if (watch_fd >= 0)
         close(watch_fd);
+
+    watch_fd = -1;
+    mouse_count = 0;
 
     for (int i = 0; i < device_count; i++) {
 

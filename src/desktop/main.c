@@ -54,9 +54,15 @@ static long long next_wakeup(void) {
     return now_ms() + (60 - time(NULL) % 60) * 1000 + 20;
 }
 
+/*
+ * Started from the login screen, the screen stays in graphics mode when
+ * we exit, because the login screen comes straight back. Started from a
+ * shell, give the text console back.
+ */
 static void restore_console(void) {
 
-    console_graphics(0);
+    if (!getenv("BHARAT_SESSION"))
+        console_graphics(0);
 }
 
 /* If the desktop crashes, still give the user a working text console. */
@@ -217,7 +223,8 @@ int main(void) {
     gfx_close();
     restore_console();
 
-    printf("Desktop closed.\n");
+    if (!getenv("BHARAT_SESSION"))
+        printf("Desktop closed.\n");
 
-    return 0;
+    return wm_exit_code;
 }

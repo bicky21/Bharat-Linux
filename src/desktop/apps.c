@@ -795,15 +795,29 @@ void open_monitor(void) {
 
 static void about_draw(struct window *win, int x, int y, int w, int h) {
 
+    static struct image *logo;
+    static int loaded;
+
     (void)win;
 
-    gradient(x, y, w, 110, 0xFFF4E8, C_WHITE);
+    if (!loaded) {
 
-    draw_logo(x + (w - 64) / 2, y + 22, 64);
+        logo = image_load("/usr/share/bharat/logo.img");
+        loaded = 1;
+    }
+
+    int cy = y + 16;
+
+    /* the full logo on its own dark background */
+    if (logo) {
+
+        fill(x, y, w, logo->h, 0x04060B);
+        draw_image(logo, x + (w - logo->w) / 2, y);
+        cy = y + logo->h + 14;
+    }
 
     const char *lines[] = {
-        "Bharat-linux",
-        "Desktop 0.1",
+        "Desktop 0.2",
         "",
         "An operating system made in India.",
         "Every window, letter and button here is",
@@ -812,12 +826,11 @@ static void about_draw(struct window *win, int x, int y, int w, int h) {
         "Kernel: Linux.  Fonts: DejaVu.",
     };
 
-    int cy = y + 100;
 
     for (int i = 0; i < (int)(sizeof(lines) / sizeof(*lines)); i++) {
 
-        struct font *f = i == 0 ? &font_big : i == 1 ? &font_bold : &font_ui;
-        uint32_t c = i <= 1 ? C_TEXT : C_MUTED;
+        struct font *f = i == 0 ? &font_bold : &font_ui;
+        uint32_t c = i == 0 ? C_TEXT : C_MUTED;
         int tw = text_width(f, lines[i]);
 
         text(f, x + (w - tw) / 2, cy, lines[i], c);
@@ -836,7 +849,7 @@ static void about_key(struct window *win, struct event *ev) {
 
 void open_about(void) {
 
-    struct window *win = wm_new_window("About Bharat", 420, 360);
+    struct window *win = wm_new_window("About Bharat", 422, 560);
 
     if (!win)
         return;
