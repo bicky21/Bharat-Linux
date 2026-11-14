@@ -59,7 +59,7 @@ KERNEL_RELEASE := $(shell uname -r)
 
 .PHONY: all initramfs image modules clean
 
-all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter
+all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
 
 $(DIRS):
@@ -80,6 +80,15 @@ rootfs/init: src/init.c $(HEADERS) | $(DIRS) $(EXTRA)
 
 rootfs/bin/%: src/%.c $(HEADERS) | $(DIRS) $(EXTRA)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
+
+# the everyday commands (ls, cp, grep, ...): one program, many names
+CORE_SRC   := $(wildcard src/coreutils/*.c)
+CORE_HDR   := $(wildcard src/coreutils/*.h)
+CORE_NAMES := $(shell ./tools/core-names.sh)
+
+rootfs/bin/coreutils: $(CORE_SRC) $(CORE_HDR) $(HEADERS) | $(DIRS) $(EXTRA)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(CORE_SRC) $(LDLIBS)
+	@cd rootfs/bin && for n in $(CORE_NAMES) "["; do ln -sfn coreutils "$$n"; done
 
 # the boot and login screen shares the drawing and input code
 GREETER_SRC := src/greeter/greeter.c src/desktop/gfx.c src/desktop/input.c
@@ -112,3 +121,4 @@ modules:
 clean:
 	rm -f rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter images/initramfs.cpio.gz images/bharat.img
 	rm -rf build/musl-include
+	cd rootfs/bin && rm -f coreutils $(CORE_NAMES) "["

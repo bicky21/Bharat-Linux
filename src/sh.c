@@ -10,9 +10,12 @@
  *   cmd arg "quoted arg"        run a program
  *   a | b | c                   pipes (any number of stages)
  *   cmd > f   cmd >> f   cmd < f   redirection
+ *   cmd 2> f   cmd 2>> f   cmd 2>&1   cmd &> f   (error messages)
  *   cmd &                       run in the background
  *   NAME=value   export NAME=value   $NAME   $?
  *   cd [dir]   exit [code]   jobs
+ *   a ; b      a && b (b only if a worked)   a || b (b only if a failed)
+ *   *.c  file?.txt  [ab]*   ~  ~/docs   (wildcards and the home folder)
  *   if exists FILE then CMD
  *   while N do CMD
  *   # comment
@@ -26,11 +29,14 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <glob.h>
+#include <limits.h>
 
 #include "libuser.h"
 
 #define MAX_LINE   512
 #define MAX_TOKENS 64
+#define MAX_ARGS 1024      /* after wildcards: "ls *" can give many names */
 #define MAX_VARS   64
 #define MAX_STAGES 8
 
@@ -356,6 +362,7 @@ void expand_alias(char *cmd) {
 int tokenize(char *cmd,
              char **tokens,
              int *is_op,
+             int *quoted,
              char *storage) {
 
     int count = 0;
@@ -372,8 +379,32 @@ int tokenize(char *cmd,
 
         tokens[count] = &storage[out];
         is_op[count] = 0;
+        quoted[count] = 0;
 
-        if (cmd[i] == '|' || cmd[i] == '<' || cmd[i] == '&') {
+        if (cmd[i] == '2' && cmd[i + 1] == '>') {
+
+            /* 2>  2>>  2>&1 : where error messages go */
+            storage[out++] = cmd[i++];
+            storage[out++] = cmd[i++];
+
+            if (cmd[i] == '>')
+                storage[out++] = cmd[i++];
+            else if (cmd[i] == '&' && cmd[i + 1] == '1') {
+
+                storage[out++] = cmd[i++];
+                storage[out++] = cmd[i++];
+            }
+
+            is_op[count] = 1;
+        }
+        else if (cmd[i] == '&' && cmd[i + 1] == '>') {
+
+            /* &> : output and error messages to one file */
+            storage[out++] = cmd[i++];
+            storage[out++] = cmd[i++];
+            is_op[count] = 1;
+        }
+        else if (cmd[i] == '|' || cmd[i] == '<' || cmd[i] == '&') {
 
             storage[out++] = cmd[i++];
             is_op[count] = 1;
@@ -397,6 +428,9 @@ int tokenize(char *cmd,
                 if (cmd[i] == '"' || cmd[i] == '\'') {
 
                     char quote = cmd[i++];
+
+                    /* "*.c" in quotes is not a wildcard */
+                    quoted[count] = 1;
 
                     while (cmd[i] && cmd[i] != quote)
                         storage[out++] = cmd[i++];
@@ -423,17 +457,87 @@ int tokenize(char *cmd,
 /* ---------- running programs ---------- */
 
 struct stage {
-    char *argv[MAX_TOKENS];
+    char *argv[MAX_ARGS];
     int argc;
 };
 
+/* ---------- wildcards and ~ ---------- */
+
+/* results of the last command's expansions, freed before the next one */
+static glob_t globs[MAX_TOKENS];
+static int glob_count;
+static char tilde[MAX_TOKENS][PATH_MAX];
+static int tilde_count;
+
+static void forget_expansions(void) {
+
+    for (int i = 0; i < glob_count; i++)
+        globfree(&globs[i]);
+
+    glob_count = 0;
+    tilde_count = 0;
+}
+
+/*
+ * Adds a word to a command, expanding it first:
+ *   ~ and ~/x   -> the home folder
+ *   *.c, a?.txt -> the matching file names (sorted); no match: unchanged
+ * Words in quotes are left exactly as typed.
+ */
+static int add_word(struct stage *st, char *word, int was_quoted) {
+
+    if (!was_quoted && word[0] == '~' && (word[1] == 0 || word[1] == '/') &&
+        tilde_count < MAX_TOKENS) {
+
+        const char *home = getenv("HOME");
+
+        if (home) {
+
+            snprintf(tilde[tilde_count], PATH_MAX, "%s%s", home, word + 1);
+            word = tilde[tilde_count++];
+        }
+    }
+
+    if (!was_quoted && strpbrk(word, "*?[") && glob_count < MAX_TOKENS) {
+
+        glob_t *g = &globs[glob_count];
+
+        if (glob(word, 0, NULL, g) == 0) {
+
+            glob_count++;
+
+            for (size_t k = 0; k < g->gl_pathc; k++) {
+
+                if (st->argc >= MAX_ARGS - 1)
+                    return -1;
+
+                st->argv[st->argc++] = g->gl_pathv[k];
+            }
+
+            return 0;
+        }
+
+        globfree(g);
+    }
+
+    if (st->argc >= MAX_ARGS - 1)
+        return -1;
+
+    st->argv[st->argc++] = word;
+
+    return 0;
+}
+
 void run_pipeline(char *cmd) {
 
-    char storage[MAX_LINE * 2];
+    static char storage[MAX_LINE * 2];
     char *tokens[MAX_TOKENS];
     int is_op[MAX_TOKENS];
+    int quoted[MAX_TOKENS];
 
-    int count = tokenize(cmd, tokens, is_op, storage);
+    forget_expansions();
+
+    int count = tokenize(cmd, tokens, is_op, quoted, storage);
 
     if (count == 0)
         return;
@@ -445,6 +549,9 @@ void run_pipeline(char *cmd) {
     char *out_file = NULL;
     int append = 0;
     int background = 0;
+    char *err_file = NULL;       /* 2> file */
+    int err_append = 0;          /* 2>> file */
+    int err_to_out = 0;          /* 2>&1 */
 
     stages[0].argc = 0;
 
@@ -454,7 +561,13 @@ void run_pipeline(char *cmd) {
 
         if (!is_op[i]) {
 
-            st->argv[st->argc++] = tokens[i];
+            if (add_word(st, tokens[i], quoted[i]) != 0) {
+
+                fprintf(stderr, "Too many words in one command\n");
+                last_status = 2;
+                return;
+            }
+
             continue;
         }
 
@@ -473,9 +586,13 @@ void run_pipeline(char *cmd) {
 
             background = 1;
         }
+        else if (strcmp(tokens[i], "2>&1") == 0) {
+
+            err_to_out = 1;
+        }
         else {
 
-            /* > >> < all need a file name after them */
+            /* > >> < 2> 2>> &> all need a file name after them */
             if (i + 1 >= count || is_op[i + 1]) {
 
                 fprintf(stderr, "Missing file name after %s\n", tokens[i]);
@@ -486,6 +603,17 @@ void run_pipeline(char *cmd) {
             if (tokens[i][0] == '<') {
 
                 in_file = tokens[i + 1];
+            }
+            else if (tokens[i][0] == '2') {
+
+                err_file = tokens[i + 1];
+                err_append = (tokens[i][2] == '>');
+            }
+            else if (tokens[i][0] == '&') {
+
+                out_file = tokens[i + 1];
+                append = 0;
+                err_to_out = 1;
             }
             else {
 
@@ -625,6 +753,26 @@ void run_pipeline(char *cmd) {
                 close(out);
             }
 
+            /* error messages: to a file, or wherever the output goes */
+            if (err_file) {
+
+                int flags = O_WRONLY | O_CREAT | (err_append ? O_APPEND : O_TRUNC);
+                int err = open(err_file, flags, 0644);
+
+                if (err < 0) {
+
+                    fprintf(stderr, "Cannot write %s\n", err_file);
+                    _exit(1);
+                }
+
+                dup2(err, STDERR_FILENO);
+                close(err);
+            }
+            else if (err_to_out) {
+
+                dup2(STDOUT_FILENO, STDERR_FILENO);
+            }
+
             execvp(stages[s].argv[0], stages[s].argv);
 
             fprintf(stderr,
@@ -727,12 +875,90 @@ void execute_while(char *cmd) {
 /* ---------- one full command line ---------- */
 
 /* cmd must be a writable buffer of at least MAX_LINE bytes. */
+/*
+ * Finds the first ; && or || outside quotes. Returns its position (or
+ * -1) and its kind: ';', '&' (for &&) or '|' (for ||).
+ */
+static int find_separator(const char *cmd, char *kind) {
+
+    char quote = 0;
+
+    for (int i = 0; cmd[i]; i++) {
+
+        char c = cmd[i];
+
+        if (quote) {
+
+            if (c == quote)
+                quote = 0;
+
+            continue;
+        }
+
+        if (c == '"' || c == '\'') {
+
+            quote = c;
+            continue;
+        }
+
+        if (c == ';') {
+
+            *kind = ';';
+            return i;
+        }
+
+        if ((c == '&' || c == '|') && cmd[i + 1] == c) {
+
+            *kind = c;
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 void execute_command(char *cmd) {
 
     trim(cmd);
 
     if (cmd[0] == 0 || cmd[0] == '#')
         return;
+
+    /* "a ; b", "a && b", "a || b": run the parts one after the other */
+    char kind;
+    int at = find_separator(cmd, &kind);
+
+    if (at >= 0) {
+
+        char left[MAX_LINE], right[MAX_LINE];
+
+        snprintf(left, sizeof(left), "%.*s", at, cmd);
+        snprintf(right, sizeof(right), "%s", cmd + at + (kind == ';' ? 1 : 2));
+
+        execute_command(left);
+
+        /* && : only after success.  || : only after failure. */
+        if (kind == ';' || (kind == '&' && last_status == 0) || (kind == '|' && last_status != 0))
+            execute_command(right);
+        else {
+
+            /* skip the next part, but keep going after it: a && b || c */
+            char next;
+            int more = find_separator(right, &next);
+
+            if (more >= 0) {
+
+                char rest[MAX_LINE];
+
+                snprintf(rest, sizeof(rest), "%s", right + more + (next == ';' ? 1 : 2));
+
+                if (next == ';' || (next == '&' && last_status == 0) || (next == '|' && last_status != 0))
+                    execute_command(rest);
+            }
+        }
+
+        return;
+    }
 
     expand_alias(cmd);
     expand_variables(cmd);

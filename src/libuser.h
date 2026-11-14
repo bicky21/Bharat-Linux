@@ -458,8 +458,17 @@ static inline int read_hidden(const char *prompt,
                               char *out,
                               size_t size) {
 
+    /*
+     * Talk to the terminal itself (/dev/tty), not to stdin/stdout: in
+     * "sudo dmesg | tail" the output goes into the pipe, but the
+     * password prompt must still appear on the screen.
+     */
+    int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
+    int in = tty >= 0 ? tty : STDIN_FILENO;
+    int outfd = tty >= 0 ? tty : STDOUT_FILENO;
+
     struct termios old, hidden;
-    int has_terminal = tcgetattr(STDIN_FILENO, &old) == 0;
+    int has_terminal = tcgetattr(in, &old) == 0;
 
     /*
      * Hide the typing BEFORE showing the prompt. The other way round,
@@ -470,27 +479,46 @@ static inline int read_hidden(const char *prompt,
         hidden = old;
         hidden.c_lflag &= ~ECHO;
 
-        tcsetattr(STDIN_FILENO, TCSANOW, &hidden);
+        tcsetattr(in, TCSANOW, &hidden);
     }
 
-    printf("%s", prompt);
     fflush(stdout);
 
-    char *typed = fgets(out, size, stdin);
+    if (write(outfd, prompt, strlen(prompt)) < 0) {
+        /* no screen to write to: still read the answer */
+    }
+
+    /* read one line, a byte at a time (no buffering past the line) */
+    size_t n = 0;
+    int ok = 0;
+    char c;
+
+    while (read(in, &c, 1) == 1) {
+
+        ok = 1;
+
+        if (c == '\n' || c == '\r')
+            break;
+
+        if (n + 1 < size)
+            out[n++] = c;
+    }
+
+    out[n] = 0;
 
     if (has_terminal) {
 
-        tcsetattr(STDIN_FILENO, TCSANOW, &old);
+        tcsetattr(in, TCSANOW, &old);
 
-        printf("\n");
+        if (write(outfd, "\n", 1) < 0) {
+            /* nothing to do */
+        }
     }
 
-    if (!typed)
-        return 0;
+    if (tty >= 0)
+        close(tty);
 
-    out[strcspn(out, "\r\n")] = 0;
-
-    return 1;
+    return ok;
 }
 
 #endif

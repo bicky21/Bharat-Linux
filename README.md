@@ -14,7 +14,8 @@ every part that the user touches is written here, from scratch, in C.
 | Boot screen and graphical login (`greeter`) | Written here: `src/greeter/` |
 | Text login | Written here: `src/login.c` |
 | Shell (`bharat-shell`) | Written here: `src/sh.c` |
-| More than 50 commands (`ls`, `cat`, `ps`, `kill`, `bpm`, ...) | Written here: `src/*.c` |
+| 74 everyday commands (`ls`, `cp`, `grep`, `find`, ...) in one program | Written here: `src/coreutils/` |
+| Other commands (`ps`, `kill`, `sudo`, `useradd`, ...) | Written here: `src/*.c` |
 | Graphical desktop (`desktop`) | Written here: `src/desktop/` |
 | `modprobe`, device helper `devd` | Written here: `src/modprobe.c`, `src/devd.c` |
 | Network helpers (`ip`, `udhcpc`) | BusyBox (ready-made, to be replaced) |
@@ -163,17 +164,38 @@ How:
   until the kernel wakes them (a key press, a new device, a stopped
   service). Nothing checks "every few seconds" any more.
 
+## Commands
+
+Type `help` for the full list with a short explanation of each.
+Every command also answers `--help`. They work like on Ubuntu, with the
+options people use most:
+
+| Kind | Commands |
+|------|----------|
+| Files and folders | `ls -la`, `cp -r`, `mv`, `rm -r`, `mkdir -p`, `rmdir`, `touch`, `ln -s`, `stat`, `file`, `find . -name '*.c'`, `du -sh`, `df -h`, `chmod u+x`, `chown`, `chgrp`, `basename`, `dirname`, `realpath`, `readlink` |
+| Text | `cat -n`, `head`, `tail -f`, `wc -l`, `grep -rni`, `sort -nru`, `uniq -c`, `cut -d: -f1`, `tr a-z A-Z`, `tee`, `diff`, `cmp`, `less`, `more`, `nl`, `tac`, `rev`, `echo -e`, `printf`, `seq`, `xargs`, `yes` |
+| System | `pwd`, `uname -a`, `hostname`, `uptime`, `date +%H:%M`, `cal`, `free -h`, `nproc`, `lscpu`, `lsblk`, `lsmod`, `dmesg`, `mount`, `umount`, `sync`, `env`, `printenv`, `which`, `tty`, `clear`, `sleep` |
+| Processes | `ps`, `kill`, `killall`, `pkill`, `pidof`, `pgrep`, `top`, `jobs` |
+| Users | `sudo`, `passwd`, `useradd`, `userdel`, `usermod`, `id`, `groups`, `whoami` |
+| Scripts | `test` / `[ ]`, `true`, `false` |
+
+All 74 commands in `src/coreutils/` are one program of about 200 KB:
+`/bin/ls`, `/bin/cp` ... are links to `/bin/coreutils`, which looks at the
+name it was started with.
+
 ## Shell quick guide
 
 ```sh
+ls *.c ~/docs                      # wildcards and ~ (home folder)
 echo "hello world" > file.txt      # write to a file (>> adds to the end)
-cat file.txt | cat                 # pipes
+cat nothere 2>/dev/null            # hide error messages (2>&1, &> too)
+make && ./run || echo failed       # && after success, || after failure
+cd /tmp ; ls                       # ; runs one after the other
+cat file.txt | grep hello | wc -l  # pipes
 sleep 30 &                         # background job (see: jobs, ps, kill)
 NAME=Bharat                        # variable
 echo Hello $NAME, last status $?
-if exists file.txt then echo yes
-while 3 do echo again
-alias ll ls                        # saved in ~/.aliases
+alias ll ls -l                     # saved in ~/.aliases
 run script.sh                      # run a script file
 ```
 
