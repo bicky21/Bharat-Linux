@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <termios.h>
 
 int main(int argc, char *argv[]) {
 
@@ -15,8 +16,31 @@ int main(int argc, char *argv[]) {
     char password[64];
 
     printf("sudo password: ");
+    fflush(stdout);
 
-    fgets(password, sizeof(password), stdin);
+    /* hide the password while it is typed */
+    struct termios old, hidden;
+    int has_terminal = tcgetattr(STDIN_FILENO, &old) == 0;
+
+    if (has_terminal) {
+
+        hidden = old;
+        hidden.c_lflag &= ~ECHO;
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &hidden);
+    }
+
+    char *typed = fgets(password, sizeof(password), stdin);
+
+    if (has_terminal) {
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &old);
+
+        printf("\n");
+    }
+
+    if (!typed)
+        return 1;
 
     password[strcspn(password, "\n")] = 0;
 
@@ -47,15 +71,13 @@ int main(int argc, char *argv[]) {
 
             fclose(f);
 
-            char *env[] = {
+            setenv("USER", "root", 1);
+            setenv("LOGNAME", "root", 1);
+            setenv("HOME", "/home/root", 1);
+            setenv("PATH", "/bin:/usr/bin", 1);
 
-                "USER=root",
-                "HOME=/home/root",
-                "PATH=/bin:/usr/bin",
-                NULL
-            };
-
-            execve(argv[1], &argv[1], env);
+            /* execvp searches PATH, so "sudo ls" works like "sudo /bin/ls" */
+            execvp(argv[1], &argv[1]);
 
             printf("sudo exec failed\n");
 

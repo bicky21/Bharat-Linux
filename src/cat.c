@@ -1,13 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "libperm.h"
 
 int main(int argc, char *argv[]) {
 
+    /* no file given: copy the keyboard or a pipe, so "ls | cat" works */
+    if (argc == 1) {
+
+        int ch;
+
+        while ((ch = getchar()) != EOF)
+            putchar(ch);
+
+        return 0;
+    }
+
     if (argc != 2) {
 
-        printf("usage: cat <file>\n");
+        printf("usage: cat [file]\n");
 
         return 1;
     }
@@ -33,7 +45,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char c;
+    /* int, not char: otherwise the byte 0xFF looks like end-of-file */
+    int c;
 
     while ((c = fgetc(f)) != EOF)
         putchar(c);

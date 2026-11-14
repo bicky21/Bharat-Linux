@@ -8,9 +8,10 @@ void cmd_pwd() {
 
     char cwd[256];
 
-    getcwd(cwd, sizeof(cwd));
-
-    printf("%s\n", cwd);
+    if (getcwd(cwd, sizeof(cwd)))
+        printf("%s\n", cwd);
+    else
+        printf("pwd failed\n");
 }
 
 void cmd_echo(int argc, char *argv[]) {
@@ -77,7 +78,7 @@ void cmd_cat(int argc, char *argv[]) {
         return;
     }
 
-    char c;
+    int c;
 
     while ((c = fgetc(f)) != EOF)
         putchar(c);

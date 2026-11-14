@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-void register_process(pid_t pid,
+static inline void register_process(pid_t pid,
                       const char *user,
                       const char *cmd) {
 
@@ -24,7 +24,7 @@ void register_process(pid_t pid,
     fclose(f);
 }
 
-void unregister_process(pid_t pid) {
+static inline void unregister_process(pid_t pid) {
 
     FILE *f = fopen("/run/processes.db", "r");
 
@@ -46,7 +46,7 @@ void unregister_process(pid_t pid) {
                  sizeof(line),
                  f)) {
 
-        int file_pid;
+        int file_pid = -1;
 
         sscanf(line,
                "%d:",
@@ -63,7 +63,7 @@ void unregister_process(pid_t pid) {
            "/run/processes.db");
 }
 
-int process_owner(pid_t pid,
+static inline int process_owner(pid_t pid,
                   char *owner) {
 
     FILE *f = fopen("/run/processes.db", "r");

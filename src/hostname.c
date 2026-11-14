@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,13 +15,14 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
-        char host[128];
+        char host[128] = "(none)\n";
 
-        fgets(host, sizeof(host), f);
+        if (!fgets(host, sizeof(host), f))
+            printf("(none)\n");
+        else
+            printf("%s", host);
 
         fclose(f);
-
-        printf("%s", host);
 
         return 0;
     }
@@ -37,6 +39,10 @@ int main(int argc, char *argv[]) {
     fprintf(f, "%s\n", argv[1]);
 
     fclose(f);
+
+    /* also tell the running kernel, not only the file */
+    if (sethostname(argv[1], strlen(argv[1])) != 0)
+        printf("Warning: saved to /etc/hostname, but the kernel refused it\n");
 
     printf("Hostname updated\n");
 

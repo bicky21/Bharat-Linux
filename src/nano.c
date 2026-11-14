@@ -25,7 +25,9 @@ int main(int argc, char *argv[]) {
 
     while (1) {
 
-        fgets(line, sizeof(line), stdin);
+        /* NULL means end of input: save what we have and stop */
+        if (!fgets(line, sizeof(line), stdin))
+            break;
 
         if (strcmp(line, ":wq\n") == 0)
             break;
