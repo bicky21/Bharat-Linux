@@ -4,7 +4,7 @@
  * The kernel starts this program first. Its jobs:
  *   1. mount the virtual filesystems (/proc, /sys, /dev, /run, /tmp)
  *   2. set the hostname
- *   3. start the service manager
+ *   3. start devd (drivers, device permissions) and the service manager
  *   4. keep a login prompt running on the console
  *   5. collect ("reap") every finished process so no zombies pile up
  */
@@ -124,6 +124,20 @@ pid_t start_login() {
     return pid;
 }
 
+void start_devd() {
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        execl("/bin/devd",
+              "/bin/devd",
+              NULL);
+
+        _exit(1);
+    }
+}
+
 void start_services() {
 
     pid_t pid = fork();
@@ -144,6 +158,9 @@ int main() {
     mount_fs("sysfs",    "/sys",  "sysfs",    NULL);
     mount_fs("devtmpfs", "/dev",  "devtmpfs", NULL);
 
+    /* terminals inside the desktop (pseudo terminals) live here */
+    mount_fs("devpts", "/dev/pts", "devpts", "mode=620,ptmxmode=666");
+
     /* /run and /tmp live in memory, so they start empty on every boot */
     mount_fs("tmpfs", "/run", "tmpfs", "mode=0755");
     mount_fs("tmpfs", "/tmp", "tmpfs", "mode=1777");
@@ -158,6 +175,7 @@ int main() {
     printf("=================================\n");
     fflush(stdout);
 
+    start_devd();
     start_services();
 
     pid_t login = start_login();

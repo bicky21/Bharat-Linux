@@ -3,10 +3,9 @@
 /rootfs/init
 /rootfs/bin/*
 !/rootfs/bin/.keep
-# busybox is a ready-made helper (ip, modprobe, udhcpc are links to it)
+# busybox is a ready-made helper (ip and udhcpc are links to it)
 !/rootfs/bin/busybox
 !/rootfs/bin/ip
-!/rootfs/bin/modprobe
 !/rootfs/bin/udhcpc
 
 # Kernel modules copied from the host by `make modules`

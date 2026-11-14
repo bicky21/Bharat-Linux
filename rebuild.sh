@@ -10,6 +10,12 @@ SIZE_MB="${SIZE_MB:-1024}"
 
 make
 
+# the mouse needs drivers from this PC; copy them once
+if [ ! -d "rootfs/lib/modules/${KERNEL_RELEASE:-$(uname -r)}" ]; then
+    ./tools/copy-modules.sh ||
+        echo "Warning: no drivers copied, the mouse will not work in the desktop"
+fi
+
 mkdir -p images
 rm -f images/bharat.img
 truncate -s "${SIZE_MB}M" images/bharat.img

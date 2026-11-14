@@ -1,0 +1,4 @@
+# device             group  mode
+/dev/fb*              video  660
+/dev/dri/card*        video  660
+/dev/input/event*     input  660

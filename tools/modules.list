@@ -1,0 +1,11 @@
+# Drivers copied into Bharat-linux by tools/copy-modules.sh
+# mouse, and the USB tablet QEMU uses as a mouse
+psmouse
+hid
+usbhid
+hid_generic
+# network cards that QEMU can emulate
+8139too
+8139cp
+e1000
+virtio_net

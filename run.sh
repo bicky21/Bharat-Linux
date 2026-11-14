@@ -6,12 +6,14 @@
 #   ./run.sh ... text     same, but inside this terminal instead of a window
 #                         (leave with: Ctrl-A then X)
 #
-# The kernel is the one from this PC. Use another with: KERNEL=/path ./run.sh
+# The kernel is the one running on this PC, because the drivers copied into
+# Bharat-linux (tools/copy-modules.sh) belong to it.
+# Use another with: KERNEL=/path ./run.sh
 set -e
 
 cd "$(dirname "$0")"
 
-KERNEL="${KERNEL:-/boot/vmlinuz}"
+KERNEL="${KERNEL:-/boot/vmlinuz-$(uname -r)}"
 MODE=disk
 TEXT=no
 
@@ -45,19 +47,25 @@ if [ "$TEXT" = yes ]; then
     CONSOLE="console=ttyS0"
 else
     DISPLAY_ARGS=""
-    CONSOLE=""
+    # vga=0x318 asks the BIOS for a 1024x768 graphics screen, which the
+    # kernel then offers as /dev/fb0 (the desktop draws there)
+    CONSOLE="vga=0x318"
 fi
+
+# A USB tablet makes the pointer inside Bharat-linux follow your mouse,
+# without QEMU "grabbing" it.
+POINTER="-usb -device usb-tablet"
 
 if [ "$MODE" = initramfs ]; then
     [ -f images/initramfs.cpio.gz ] || { echo "Run 'make initramfs' first"; exit 1; }
-    exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS \
+    exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS $POINTER \
         -kernel "$KERNEL" \
         -initrd images/initramfs.cpio.gz \
         -append "rdinit=/init quiet $CONSOLE"
 fi
 
 [ -f images/bharat.img ] || { echo "Run './rebuild.sh' first"; exit 1; }
-exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS \
+exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS $POINTER \
     -kernel "$KERNEL" \
     -drive file=images/bharat.img,format=raw \
     -append "root=/dev/sda rw init=/init quiet $CONSOLE"
