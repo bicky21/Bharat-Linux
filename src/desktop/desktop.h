@@ -83,6 +83,7 @@ struct image {
 
 struct image *image_load(const char *path);
 void draw_image(struct image *img, int x, int y);
+void draw_image_alpha(struct image *img, int x, int y, int alpha);
 
 void draw_logo(int x, int y, int size);
 void draw_cursor(int x, int y);

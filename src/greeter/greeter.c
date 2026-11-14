@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <math.h>
 #include <linux/kd.h>
 
 #include "../desktop/desktop.h"
@@ -129,21 +130,74 @@ static void center_text(struct font *f, int y, const char *s, uint32_t c) {
 static int logo_x(void) { return logo ? (screen_w - logo->w) / 2 : 0; }
 static int logo_y(void) { return logo ? screen_h / 2 - logo->h / 2 - 60 : 0; }
 
-static void draw_splash_bar(long long t) {
+/* 0 at the start, 1 at the end, slowing down smoothly at the end */
+static double ease_out(long long t, long long duration) {
 
-    int bw = 220, bx = (screen_w - bw) / 2;
-    int by = logo ? logo_y() + logo->h + 30 : screen_h / 2 + 40;
+    double p = t >= duration ? 1.0 : t <= 0 ? 0.0 : (double)t / duration;
 
-    gfx_area(bx, by, bw, 4);
-    fill(bx, by, bw, 4, 0x1A2333);
+    return 1.0 - (1.0 - p) * (1.0 - p);
+}
 
-    /* a short saffron piece that slides from left to right */
-    int seg = 60;
-    int pos = (int)(t % 1400) * (bw + seg) / 1400 - seg;
+#define SPLASH_TEXT "Starting Bharat Linux"
 
-    gfx_clip(bx, by, bw, 4);
-    fill(bx + pos, by, seg, 4, C_SAFFRON);
-    gfx_flush_rect(bx, by, bw, 4);
+static int splash_text_y(void) {
+
+    return logo ? logo_y() + logo->h + 26 : screen_h / 2 + 20;
+}
+
+/*
+ * One frame of the boot animation, t milliseconds after it started:
+ *   0.0 - 0.9 s  the logo fades in
+ *   0.6 - 1.2 s  the text fades in
+ *   from 0.9 s   three dots (saffron, white, green) pulse in a wave
+ * Only the parts that change are drawn and copied to the screen.
+ */
+static void splash_frame(long long t) {
+
+    if (t <= 1000 && logo) {
+
+        int x = logo_x(), y = logo_y();
+
+        gfx_area(x, y, logo->w, logo->h);
+        fill(x, y, logo->w, logo->h, BG_TOP);
+        draw_image_alpha(logo, x, y, (int)(255 * ease_out(t, 900)));
+        gfx_flush_rect(x, y, logo->w, logo->h);
+    }
+
+    int ty = splash_text_y();
+
+    if (t >= 600 && t <= 1300) {
+
+        int tw = text_width(&font_ui, SPLASH_TEXT);
+        int tx = (screen_w - tw) / 2;
+
+        gfx_area(tx, ty, tw, font_ui.height);
+        fill(tx, ty, tw, font_ui.height, BG_TOP);
+        text_alpha(&font_ui, tx, ty, SPLASH_TEXT, 0x8B949E, (int)(255 * ease_out(t - 600, 600)));
+        gfx_flush_rect(tx, ty, tw, font_ui.height);
+    }
+
+    if (t >= 900) {
+
+        static const uint32_t colors[3] = {C_SAFFRON, C_WHITE, C_GREEN};
+        int dy = ty + font_ui.height + 22;
+        int bx = screen_w / 2 - 40;
+
+        gfx_area(bx, dy - 10, 80, 20);
+        fill(bx, dy - 10, 80, 20, BG_TOP);
+
+        for (int i = 0; i < 3; i++) {
+
+            /* each dot grows and shrinks a little after the one before */
+            double wave = (sin((t - 900) / 900.0 * 2 * M_PI - i * 0.9) + 1) / 2;
+            int r = 3 + (int)(wave * 4 + 0.5);
+
+            fill_circle(screen_w / 2 + (i - 1) * 24, dy, r, colors[i]);
+        }
+
+        gfx_flush_rect(bx, dy - 10, 80, 20);
+    }
+
     gfx_area(0, 0, screen_w, screen_h);
 }
 
@@ -152,38 +206,63 @@ static void splash(void) {
     gfx_area(0, 0, screen_w, screen_h);
     fill(0, 0, screen_w, screen_h, BG_TOP);
 
-    if (logo) {
-
-        draw_image(logo, logo_x(), logo_y());
-        center_text(&font_ui, logo_y() + logo->h + 48, "Starting Bharat Linux", 0x8B949E);
-    }
-    else {
-
-        center_text(&font_big, screen_h / 2 - 20, "Bharat Linux", C_WHITE);
-    }
+    if (!logo)
+        center_text(&font_big, screen_h / 2 - 40, "Bharat Linux", C_WHITE);
 
     gfx_flush();
 
     long long start = now_ms();
 
     /*
-     * Wait at least 1.5 seconds (so the logo is seen), until the mouse
-     * driver is ready, but never more than 6 seconds.
+     * Show the animation for at least 3 seconds, then go on as soon as
+     * the mouse driver is ready (at most 7 seconds in all).
      */
     while (1) {
 
         long long t = now_ms() - start;
 
-        if ((t > 1500 && input_has_mouse()) || t > 6000)
+        if ((t > 3000 && input_has_mouse()) || t > 7000)
             break;
 
-        draw_splash_bar(t);
+        splash_frame(t);
 
-        /* new devices (the mouse driver loading) are noticed here */
+        /* about 30 pictures a second; new devices are noticed here too */
         struct pollfd p = {.fd = input_watch_fd(), .events = POLLIN};
 
         if (poll(&p, 1, 33) > 0)
             input_watch_read();
+    }
+}
+
+/* The logo glides up from the boot screen to its place on the login screen. */
+static void glide_to_login(void) {
+
+    if (!logo || screen_h < 700)
+        return;
+
+    int from = logo_y(), to = 14;
+    long long start = now_ms();
+
+    while (1) {
+
+        long long t = now_ms() - start;
+        double p = ease_out(t, 500);
+        int y = from + (int)((to - from) * p);
+
+        gfx_area(0, 0, screen_w, screen_h);
+
+        /* the background changes from plain dark to the login colours */
+        gradient(0, 0, screen_w, screen_h, BG_TOP,
+                 (uint32_t)(((BG_BOTTOM >> 16 & 255) * p)) << 16 |
+                 (uint32_t)(((BG_BOTTOM >> 8 & 255) * p)) << 8 |
+                 (uint32_t)((BG_BOTTOM & 255) * p));
+        draw_image(logo, logo_x(), y);
+        gfx_flush();
+
+        if (t >= 500)
+            break;
+
+        usleep(16 * 1000);
     }
 }
 
@@ -572,11 +651,18 @@ int main(void) {
         close(open("/run/greeter-autologin-done", O_WRONLY | O_CREAT | O_CLOEXEC, 0644));
 
 
-        if (find_user(autologin, 0, &user))
+        if (find_user(autologin, 0, &user)) {
+
+            session_ran = 1;
             after_session(run_session(&user));
+        }
         else
             snprintf(message, sizeof(message), "Automatic login: no user %s.", autologin);
     }
+
+    /* coming from the boot screen: a smooth change to the login screen */
+    if (!session_ran)
+        glide_to_login();
 
     draw_login();
 
