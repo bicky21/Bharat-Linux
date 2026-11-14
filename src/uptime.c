@@ -14,7 +14,8 @@ int main() {
 
     double up;
 
-    fscanf(f, "%lf", &up);
+    if (fscanf(f, "%lf", &up) != 1)
+        up = 0;
 
     fclose(f);
 

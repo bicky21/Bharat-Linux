@@ -1,4 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "libperm.h"
 
 int main(int argc, char *argv[]) {
 
@@ -8,6 +12,23 @@ int main(int argc, char *argv[]) {
 
         return 1;
     }
+
+    char *user = getenv("USER");
+
+    if (!user)
+        user = "unknown";
+
+    /* only root or the current owner may give a file away */
+    if (!check_perm(argv[2], user)) {
+
+        printf("Permission denied\n");
+
+        return 1;
+    }
+
+    char full[PATH_MAX];
+
+    full_path(argv[2], full, sizeof(full));
 
     FILE *f = fopen("/etc/owners", "a");
 
@@ -20,7 +41,7 @@ int main(int argc, char *argv[]) {
 
     fprintf(f,
             "%s %s\n",
-            argv[2],
+            full,
             argv[1]);
 
     fclose(f);

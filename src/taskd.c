@@ -17,8 +17,9 @@ int main() {
 
                 line[strcspn(line, "\n")] = 0;
 
-                if (strlen(line) > 0)
-                    system(line);
+                if (strlen(line) > 0 && line[0] != '#' &&
+                    system(line) != 0)
+                    fprintf(stderr, "taskd: task failed: %s\n", line);
             }
 
             fclose(f);

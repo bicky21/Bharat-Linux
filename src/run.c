@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[]) {
 
@@ -10,14 +10,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char cmd[256];
+    /* the shell runs a script when it gets the file name as argument */
+    execl("/bin/sh", "sh", argv[1], NULL);
 
-    snprintf(cmd,
-             sizeof(cmd),
-             "/bin/sh < %s",
-             argv[1]);
+    printf("Cannot start /bin/sh\n");
 
-    system(cmd);
-
-    return 0;
+    return 1;
 }

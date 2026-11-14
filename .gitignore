@@ -1,2 +1,25 @@
-images/*.img
+# --- things that are built, not written ---
+# Programs compiled by `make` (source lives in src/)
+/rootfs/init
+/rootfs/bin/*
+!/rootfs/bin/.keep
+# busybox is a ready-made helper (ip, modprobe, udhcpc are links to it)
+!/rootfs/bin/busybox
+!/rootfs/bin/ip
+!/rootfs/bin/modprobe
+!/rootfs/bin/udhcpc
+
+# Kernel modules copied from the host by `make modules`
+/rootfs/lib/modules/
+
+# Disk images and initramfs
+/images/*
+!/images/.keep
 mnt/
+
+# Compiler leftovers
+a.out
+*.o
+
+# Files the running system creates
+/rootfs/home/*/.history

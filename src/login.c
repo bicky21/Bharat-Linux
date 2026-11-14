@@ -125,11 +125,20 @@ void load_user_environment(char *user) {
                    username,
                    1);
 
+            setenv("LOGNAME",
+                   username,
+                   1);
+
             setenv("HOME",
                    home,
                    1);
 
-            chdir(home);
+            setenv("SHELL",
+                   shell,
+                   1);
+
+            if (chdir(home) != 0)
+                printf("Warning: cannot enter %s\n", home);
 
             fclose(f);
 
@@ -152,12 +161,16 @@ int main() {
 
         fflush(stdout);
 
+        /* NULL means the terminal was closed: exit so init restarts us */
         if (!fgets(user,
                    sizeof(user),
                    stdin))
-            continue;
+            return 1;
 
         trim(user);
+
+        if (user[0] == 0)
+            continue;
 
         printf("password: ");
 
@@ -171,7 +184,7 @@ int main() {
 
             enable_echo();
 
-            continue;
+            return 1;
         }
 
         enable_echo();

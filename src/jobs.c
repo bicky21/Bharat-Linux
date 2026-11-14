@@ -20,13 +20,14 @@ int process_alive(int pid) {
 
     char comm[128];
 
-    char state;
+    char state = 'Z';
 
-    fscanf(f,
-           "%d %127s %c",
-           &proc_pid,
-           comm,
-           &state);
+    if (fscanf(f,
+               "%d %127s %c",
+               &proc_pid,
+               comm,
+               &state) != 3)
+        state = 'Z';
 
     fclose(f);
 

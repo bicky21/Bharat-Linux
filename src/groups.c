@@ -18,6 +18,9 @@ int main() {
 
     char *current = getenv("USER");
 
+    if (!current)
+        current = "unknown";
+
     while (fscanf(f,
                   "%63s %63s",
                   user,

@@ -1,8 +1,14 @@
+#include <stdlib.h>
 #include <stdio.h>
 
 int main() {
 
-    FILE *f = fopen("/home/bicky/.history", "r");
+    char *home = getenv("HOME");
+    char path[256];
+
+    snprintf(path, sizeof(path), "%s/.history", home ? home : "");
+
+    FILE *f = fopen(path, "r");
 
     if (!f) {
 
