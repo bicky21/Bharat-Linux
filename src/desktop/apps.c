@@ -50,10 +50,25 @@ static int compare_entries(const void *a, const void *b) {
 
 static void join_path(const char *dir, const char *name, char *out, size_t size) {
 
-    if (strcmp(dir, "/") == 0)
-        snprintf(out, size, "/%s", name);
-    else
-        snprintf(out, size, "%s/%s", dir, name);
+    /* a path that is too long is cut off; opening it then simply fails */
+    size_t n = strlen(dir);
+
+    if (n >= size)
+        n = size - 1;
+
+    memcpy(out, dir, n);
+
+    if (n == 0 || out[n - 1] != '/')
+        out[n++] = '/';
+
+    size_t room = size - n - 1;
+    size_t len = strlen(name);
+
+    if (len > room)
+        len = room;
+
+    memcpy(out + n, name, len);
+    out[n + len] = 0;
 }
 
 static void files_load(struct window *win, const char *path) {

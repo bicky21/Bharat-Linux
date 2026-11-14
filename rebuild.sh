@@ -6,7 +6,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-SIZE_MB="${SIZE_MB:-1024}"
+SIZE_MB="${SIZE_MB:-256}"
 
 make
 

@@ -58,14 +58,14 @@ POINTER="-usb -device usb-tablet"
 
 if [ "$MODE" = initramfs ]; then
     [ -f images/initramfs.cpio.gz ] || { echo "Run 'make initramfs' first"; exit 1; }
-    exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS $POINTER \
+    exec $SUDO qemu-system-x86_64 -m 256M $KVM $DISPLAY_ARGS $POINTER \
         -kernel "$KERNEL" \
         -initrd images/initramfs.cpio.gz \
         -append "rdinit=/init quiet $CONSOLE"
 fi
 
 [ -f images/bharat.img ] || { echo "Run './rebuild.sh' first"; exit 1; }
-exec $SUDO qemu-system-x86_64 -m 512M $KVM $DISPLAY_ARGS $POINTER \
+exec $SUDO qemu-system-x86_64 -m 256M $KVM $DISPLAY_ARGS $POINTER \
     -kernel "$KERNEL" \
     -drive file=images/bharat.img,format=raw \
     -append "root=/dev/sda rw init=/init quiet $CONSOLE"

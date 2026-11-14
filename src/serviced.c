@@ -2,10 +2,13 @@
  * Bharat-linux service manager.
  *
  * Reads /etc/services/enabled (one program path per line), starts each
- * program once, and starts it again only if it has stopped.
+ * program once, and starts it again only if it has stopped. Between
+ * those moments it sleeps, so it uses no processor time.
  */
 
 #include <stdio.h>
+#include <signal.h>
+#include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,6 +115,18 @@ void start_enabled() {
     fclose(f);
 }
 
+void mark_stopped(pid_t pid) {
+
+    for (int i = 0; i < service_count; i++) {
+
+        if (services[i].pid == pid) {
+
+            log_line("stopped", services[i].path, pid);
+            services[i].pid = 0;
+        }
+    }
+}
+
 void reap_stopped() {
 
     pid_t pid;
@@ -127,6 +142,11 @@ void reap_stopped() {
             }
         }
     }
+}
+
+static void on_alarm(int sig) {
+
+    (void)sig;
 }
 
 int main() {
@@ -150,13 +170,41 @@ int main() {
             close(fd);
     }
 
+    /* the alarm only interrupts waitpid(); it does nothing else */
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_alarm;
+    sigaction(SIGALRM, &sa, NULL);
+
     while (1) {
 
         reap_stopped();
         start_enabled();
         write_pid_file();
 
-        sleep(10);
+        /*
+         * Sleep until a service stops (waitpid returns at once then), or
+         * at most 5 minutes to notice services added to the list.
+         * Before, this woke up every 10 seconds just to check.
+         */
+        alarm(300);
+
+        pid_t done = waitpid(-1, NULL, 0);
+
+        alarm(0);
+
+        if (done > 0) {
+
+            mark_stopped(done);
+
+            /* a service that keeps crashing must not use all the CPU */
+            sleep(2);
+        }
+        else if (errno == ECHILD) {
+
+            sleep(300);     /* no services running at all */
+        }
     }
 
     return 0;

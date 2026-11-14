@@ -3,8 +3,11 @@
  *
  * Everything is first drawn into "back", a picture in normal memory with
  * one 32-bit number per pixel (0xRRGGBB). When a frame is finished,
- * gfx_flush() copies it to the real screen in one go, so the user never
- * sees a half-drawn picture (no flicker).
+ * gfx_flush_rect() copies it to the real screen, so the user never sees a
+ * half-drawn picture (no flicker).
+ *
+ * To save work, only the part of the screen that changed is redrawn:
+ * gfx_area() limits all drawing to that box ("damaged area").
  */
 
 #include <stdio.h>
@@ -39,6 +42,9 @@ static uint32_t *saved;              /* a copy for save/restore_background */
 
 /* the drawing area allowed right now */
 static int clip_x0, clip_y0, clip_x1, clip_y1;
+
+/* the part of the screen being redrawn; clips never go outside it */
+static int area_x0, area_y0, area_x1, area_y1;
 
 /* ---------- opening and showing ---------- */
 
@@ -83,7 +89,7 @@ int gfx_open(void) {
     if (!back || !saved)
         return -ENOMEM;
 
-    gfx_noclip();
+    gfx_area(0, 0, screen_w, screen_h);
 
     return 0;
 }
@@ -104,8 +110,16 @@ void gfx_close(void) {
     free(saved);
 }
 
-/* Copy the finished picture to the screen, in the screen's own format. */
-void gfx_flush(void) {
+/* Copy one box of the finished picture to the screen, in its format. */
+void gfx_flush_rect(int x, int y, int w, int h) {
+
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > screen_w) w = screen_w - x;
+    if (y + h > screen_h) h = screen_h - y;
+
+    if (w <= 0 || h <= 0)
+        return;
 
     int bpp = var.bits_per_pixel;
 
@@ -115,22 +129,22 @@ void gfx_flush(void) {
                var.green.offset == 8 &&
                var.blue.offset == 0;
 
-    for (int y = 0; y < screen_h; y++) {
+    for (int row = y; row < y + h; row++) {
 
-        uint32_t *src = back + (size_t)y * screen_w;
+        uint32_t *src = back + (size_t)row * screen_w + x;
         uint8_t *dst = fb_mem +
-                       (size_t)(y + var.yoffset) * fix.line_length +
-                       (size_t)var.xoffset * (bpp / 8);
+                       (size_t)(row + var.yoffset) * fix.line_length +
+                       (size_t)(x + var.xoffset) * (bpp / 8);
 
         if (same) {
 
-            memcpy(dst, src, (size_t)screen_w * 4);
+            memcpy(dst, src, (size_t)w * 4);
             continue;
         }
 
-        for (int x = 0; x < screen_w; x++) {
+        for (int i = 0; i < w; i++) {
 
-            uint32_t c = src[x];
+            uint32_t c = src[i];
             uint32_t r = (c >> 16) & 255;
             uint32_t g = (c >> 8) & 255;
             uint32_t b = c & 255;
@@ -140,22 +154,23 @@ void gfx_flush(void) {
                          ((g >> (8 - var.green.length)) << var.green.offset) |
                          ((b >> (8 - var.blue.length)) << var.blue.offset);
 
-            if (bpp == 32) {
-
-                ((uint32_t *)dst)[x] = p;
-            }
+            if (bpp == 32)
+                ((uint32_t *)dst)[i] = p;
             else if (bpp == 24) {
 
-                dst[x * 3]     = p & 255;
-                dst[x * 3 + 1] = (p >> 8) & 255;
-                dst[x * 3 + 2] = (p >> 16) & 255;
+                dst[i * 3]     = p & 255;
+                dst[i * 3 + 1] = (p >> 8) & 255;
+                dst[i * 3 + 2] = (p >> 16) & 255;
             }
-            else {
-
-                ((uint16_t *)dst)[x] = (uint16_t)p;
-            }
+            else
+                ((uint16_t *)dst)[i] = (uint16_t)p;
         }
     }
+}
+
+void gfx_flush(void) {
+
+    gfx_flush_rect(0, 0, screen_w, screen_h);
 }
 
 void save_background(void) {
@@ -163,19 +178,42 @@ void save_background(void) {
     memcpy(saved, back, (size_t)screen_w * screen_h * 4);
 }
 
+/* Paint the saved picture back, but only inside the current area. */
 void restore_background(void) {
 
-    memcpy(back, saved, (size_t)screen_w * screen_h * 4);
+    int w = area_x1 - area_x0;
+
+    for (int y = area_y0; y < area_y1 && w > 0; y++) {
+
+        size_t at = (size_t)y * screen_w + area_x0;
+
+        memcpy(back + at, saved + at, (size_t)w * 4);
+    }
 }
 
 /* ---------- clipping ---------- */
 
+void gfx_area(int x, int y, int w, int h) {
+
+    area_x0 = x < 0 ? 0 : x;
+    area_y0 = y < 0 ? 0 : y;
+    area_x1 = x + w > screen_w ? screen_w : x + w;
+    area_y1 = y + h > screen_h ? screen_h : y + h;
+
+    gfx_noclip();
+}
+
 void gfx_noclip(void) {
 
-    clip_x0 = 0;
-    clip_y0 = 0;
-    clip_x1 = screen_w;
-    clip_y1 = screen_h;
+    clip_x0 = area_x0;
+    clip_y0 = area_y0;
+    clip_x1 = area_x1;
+    clip_y1 = area_y1;
+}
+
+int gfx_visible(int x, int y, int w, int h) {
+
+    return x < clip_x1 && y < clip_y1 && x + w > clip_x0 && y + h > clip_y0;
 }
 
 void gfx_clip(int x, int y, int w, int h) {
@@ -271,6 +309,9 @@ void gradient(int x, int y, int w, int h, uint32_t top, uint32_t bottom) {
 /* A box with rounded corners. The corner edges are softened. */
 void fill_round(int x, int y, int w, int h, int r, uint32_t c) {
 
+    if (!gfx_visible(x, y, w, h))
+        return;
+
     if (r * 2 > h) r = h / 2;
     if (r * 2 > w) r = w / 2;
 
@@ -296,6 +337,9 @@ void fill_round(int x, int y, int w, int h, int r, uint32_t c) {
 }
 
 void fill_circle(int cx, int cy, int r, uint32_t c) {
+
+    if (!gfx_visible(cx - r - 1, cy - r - 1, 2 * r + 3, 2 * r + 3))
+        return;
 
     for (int y = -r; y <= r; y++) {
 
@@ -345,6 +389,10 @@ void text_char(struct font *f, int x, int y, char ch, uint32_t c) {
     int w = f->widths[i];
     const unsigned char *a = f->alpha + f->offsets[i];
 
+    /* nothing to do for a letter outside the area being drawn */
+    if (!gfx_visible(x, y, w, f->height))
+        return;
+
     for (int j = 0; j < f->height; j++) {
 
         for (int k = 0; k < w; k++) {
@@ -383,7 +431,7 @@ int text_alpha(struct font *f, int x, int y, const char *s, uint32_t c, int alph
         const unsigned char *a = f->alpha + f->offsets[i];
 
         /* skip letters that are completely outside the clip area */
-        if (x + w > clip_x0 && x < clip_x1) {
+        if (gfx_visible(x, y, w, f->height)) {
 
             for (int j = 0; j < f->height; j++) {
 
@@ -450,6 +498,9 @@ static const char *cursor_shape[] = {
 void draw_cursor(int x, int y) {
 
     gfx_noclip();
+
+    if (!gfx_visible(x, y, CURSOR_W, CURSOR_H))
+        return;
 
     for (int j = 0; j < (int)(sizeof(cursor_shape) / sizeof(*cursor_shape)); j++) {
 

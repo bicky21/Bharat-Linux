@@ -9,6 +9,8 @@ int main() {
 
         FILE *f = fopen("/etc/tasks/tasks", "r");
 
+        int tasks = 0;
+
         if (f) {
 
             char line[256];
@@ -17,15 +19,20 @@ int main() {
 
                 line[strcspn(line, "\n")] = 0;
 
-                if (strlen(line) > 0 && line[0] != '#' &&
-                    system(line) != 0)
+                if (strlen(line) == 0 || line[0] == '#')
+                    continue;
+
+                tasks++;
+
+                if (system(line) != 0)
                     fprintf(stderr, "taskd: task failed: %s\n", line);
             }
 
             fclose(f);
         }
 
-        sleep(30);
+        /* nothing to do: look at the list again only every 5 minutes */
+        sleep(tasks ? 30 : 300);
     }
 
     return 0;

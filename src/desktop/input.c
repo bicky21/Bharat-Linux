@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
+#include <sys/inotify.h>
 #include <linux/input.h>
 
 #include "desktop.h"
@@ -34,6 +35,9 @@ static int mouse_count;
 int mouse_x, mouse_y;
 
 static int shift, ctrl, alt, caps;
+
+/* the kernel tells us through this file when /dev/input changes */
+static int watch_fd = -1;
 
 /* US keyboard layout: key code -> character, without and with Shift */
 static const char normal_map[128] =
@@ -136,12 +140,41 @@ int input_open(void) {
     mouse_x = screen_w / 2;
     mouse_y = screen_h / 2;
 
+    /*
+     * New device, or a device that just became ours (devd changed its
+     * group): look again. Without this we would have to check every few
+     * seconds, which wakes the computer up for nothing.
+     */
+    watch_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+
+    if (watch_fd >= 0)
+        inotify_add_watch(watch_fd, "/dev/input", IN_CREATE | IN_ATTRIB);
+
     input_rescan();
 
     return device_count;
 }
 
+int input_watch_fd(void) {
+
+    return watch_fd;
+}
+
+void input_watch_read(void) {
+
+    char buf[4096];
+
+    while (read(watch_fd, buf, sizeof(buf)) > 0) {
+        /* we only need to know that something changed */
+    }
+
+    input_rescan();
+}
+
 void input_close(void) {
+
+    if (watch_fd >= 0)
+        close(watch_fd);
 
     for (int i = 0; i < device_count; i++) {
 
@@ -238,6 +271,7 @@ int input_read(int fd, struct event *out, int max) {
         return 0;
 
     int moved = 0;
+    int old_x = mouse_x, old_y = mouse_y;
 
     for (int i = 0; i < got / (int)sizeof(raw[0]) && n < max - 1; i++) {
 
@@ -315,8 +349,10 @@ int input_read(int fd, struct event *out, int max) {
 
         clamp_mouse();
 
+        /* value = where the pointer was before (x in the high half) */
         if (n < max)
-            out[n++] = (struct event){.type = EV_MOUSE_MOVE};
+            out[n++] = (struct event){.type = EV_MOUSE_MOVE,
+                                      .value = (old_x << 16) | old_y};
     }
 
     return n;

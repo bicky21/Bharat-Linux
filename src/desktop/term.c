@@ -44,6 +44,7 @@ struct term {
     int cols, rows;
     struct cell *grid;
     int cx, cy;          /* cursor */
+    int dirty_lo, dirty_hi;   /* rows that changed since the last redraw */
     int saved_cx, saved_cy;
     int cursor_on;
     uint8_t fg, bg;
@@ -67,6 +68,13 @@ static struct cell blank(struct term *t) {
     return (struct cell){' ', DEFAULT_FG, t->bg};
 }
 
+/* Remember that rows lo..hi must be drawn again. */
+static void touch(struct term *t, int lo, int hi) {
+
+    if (lo < t->dirty_lo) t->dirty_lo = lo;
+    if (hi > t->dirty_hi) t->dirty_hi = hi;
+}
+
 static struct cell *at(struct term *t, int x, int y) {
 
     return &t->grid[y * t->cols + x];
@@ -76,15 +84,22 @@ static void clear_cells(struct term *t, int from, int to) {
 
     for (int i = from; i < to; i++)
         t->grid[i] = blank(t);
+
+    if (to > from)
+        touch(t, from / t->cols, (to - 1) / t->cols);
 }
 
 static void scroll_up(struct term *t) {
+
+    touch(t, 0, t->rows - 1);
 
     memmove(t->grid, t->grid + t->cols, sizeof(struct cell) * t->cols * (t->rows - 1));
     clear_cells(t, t->cols * (t->rows - 1), t->cols * t->rows);
 }
 
 static void scroll_down(struct term *t) {
+
+    touch(t, 0, t->rows - 1);
 
     memmove(t->grid + t->cols, t->grid, sizeof(struct cell) * t->cols * (t->rows - 1));
     clear_cells(t, 0, t->cols);
@@ -127,6 +142,7 @@ static void put_char(struct term *t, char ch) {
     }
 
     *at(t, t->cx, t->cy) = (struct cell){ch, fg, bg};
+    touch(t, t->cy, t->cy);
     t->cx++;
 }
 
@@ -453,10 +469,26 @@ static void term_readable(struct window *win) {
         return;
     }
 
+    int old_cy = t->cy;
+
+    t->dirty_lo = t->rows;
+    t->dirty_hi = -1;
+
     for (ssize_t i = 0; i < n; i++)
         feed(t, buf[i]);
 
-    wm_redraw();
+    /* the cursor is drawn too: its old and new row change */
+    touch(t, old_cy, old_cy);
+    touch(t, t->cy, t->cy);
+
+    /* redraw only the rows that changed, not the whole window */
+    int x, y, w, h;
+
+    content_box(win, &x, &y, &w, &h);
+
+    if (t->dirty_lo <= t->dirty_hi)
+        wm_damage(x, y + PAD + t->dirty_lo * CELL_H, w,
+                  (t->dirty_hi - t->dirty_lo + 1) * CELL_H);
 }
 
 static void term_destroy(struct window *win) {

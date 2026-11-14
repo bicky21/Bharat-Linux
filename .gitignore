@@ -22,3 +22,4 @@ a.out
 
 # Files the running system creates
 /rootfs/home/*/.history
+/build/musl-include/

@@ -49,9 +49,15 @@ extern int screen_w, screen_h;
 int  gfx_open(void);
 void gfx_close(void);
 void gfx_flush(void);
+void gfx_flush_rect(int x, int y, int w, int h);
 
+void gfx_area(int x, int y, int w, int h);   /* the part being redrawn */
 void gfx_clip(int x, int y, int w, int h);   /* only draw inside this box */
 void gfx_noclip(void);
+int  gfx_visible(int x, int y, int w, int h);
+
+#define CURSOR_W 12
+#define CURSOR_H 19
 
 void fill(int x, int y, int w, int h, uint32_t c);
 void fill_alpha(int x, int y, int w, int h, uint32_t c, int alpha);
@@ -107,6 +113,8 @@ extern int mouse_x, mouse_y;
 int  input_open(void);           /* returns number of devices */
 void input_close(void);
 void input_rescan(void);         /* look for newly plugged devices */
+int  input_watch_fd(void);       /* readable when /dev/input changes */
+void input_watch_read(void);
 int  input_fds(int *fds, int max);
 int  input_read(int fd, struct event *out, int max);
 int  input_has_mouse(void);
@@ -137,7 +145,10 @@ struct window {
 };
 
 struct window *wm_new_window(const char *title, int w, int h);
-void wm_redraw(void);              /* ask for a new picture */
+void wm_redraw(void);              /* redraw the whole screen */
+void wm_damage(int x, int y, int w, int h);   /* redraw only this box */
+void wm_damage_window(struct window *win);
+int  wm_wants_seconds(void);       /* a window needs a tick every second */
 void wm_draw(void);
 void wm_draw_wallpaper(void);
 void wm_event(struct event *ev);

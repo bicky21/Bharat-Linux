@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <linux/kd.h>
 
 #include "desktop.h"
@@ -37,6 +38,19 @@ static void console_graphics(int on) {
 
     if (tty_fd >= 0)
         ioctl(tty_fd, KDSETMODE, on ? KD_GRAPHICS : KD_TEXT);
+}
+
+/*
+ * When to wake up next if nothing happens: in one second when a window
+ * shows live numbers (System Monitor), otherwise when the clock in the
+ * taskbar has to change (the next full minute).
+ */
+static long long next_wakeup(void) {
+
+    if (wm_wants_seconds())
+        return now_ms() + 1000;
+
+    return now_ms() + (60 - time(NULL) % 60) * 1000 + 20;
 }
 
 static void restore_console(void) {
@@ -92,10 +106,11 @@ int main(void) {
     console_graphics(1);
 
     wm_draw_wallpaper();
+    wm_redraw();
+    wm_tick();
     wm_draw();
 
-    long long next_tick = now_ms() + 1000;
-    long long next_scan = now_ms() + 2000;
+    long long next_tick = next_wakeup();
 
     while (!wm_quit && !stop_now) {
 
@@ -105,7 +120,7 @@ int main(void) {
         struct window *owners[MAX_FDS];
 
         int ni = input_fds(input, MAX_FDS / 2);
-        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2);
+        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2 - 1);
 
         for (int i = 0; i < ni; i++)
             pfd[i] = (struct pollfd){.fd = input[i], .events = POLLIN};
@@ -113,12 +128,21 @@ int main(void) {
         for (int i = 0; i < nw; i++)
             pfd[ni + i] = (struct pollfd){.fd = win_fds[i], .events = POLLIN};
 
+        int watch = ni + nw;
+
+        pfd[watch] = (struct pollfd){.fd = input_watch_fd(), .events = POLLIN};
+
+        /* a System Monitor opened since we last looked needs seconds */
+        if (wm_wants_seconds() && next_tick > now_ms() + 1000)
+            next_tick = now_ms() + 1000;
+
         long long wait = next_tick - now_ms();
 
         if (wait < 0)
             wait = 0;
 
-        int ready = poll(pfd, ni + nw, (int)wait);
+        /* sleep until something happens; no busy waiting */
+        int ready = poll(pfd, watch + 1, (int)wait);
 
         if (ready < 0 && errno != EINTR)
             break;
@@ -141,21 +165,16 @@ int main(void) {
                 owners[i]->readable(owners[i]);
         }
 
+        /* a mouse plugged in (or allowed) later is picked up here */
+        if (ready > 0 && (pfd[watch].revents & POLLIN))
+            input_watch_read();
+
         wm_cleanup();
 
-        long long now = now_ms();
-
-        if (now >= next_tick) {
+        if (now_ms() >= next_tick) {
 
             wm_tick();
-            next_tick = now + 1000;
-        }
-
-        /* a mouse plugged in (or allowed) later is picked up here */
-        if (now >= next_scan) {
-
-            input_rescan();
-            next_scan = now + 3000;
+            next_tick = next_wakeup();
         }
 
         if (wm_needs_redraw())

@@ -16,7 +16,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+/* glibc keeps crypt() in its own library with a header; musl has it built in */
+#if __has_include(<crypt.h>)
 #include <crypt.h>
+#else
+char *crypt(const char *key, const char *salt);
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 

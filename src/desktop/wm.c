@@ -21,8 +21,23 @@
 static struct window *wins[MAX_WINDOWS];   /* [0] = bottom, last = top */
 static int nwin;
 
-static int need_redraw = 1;
 int wm_quit;
+
+/*
+ * Damaged areas: the boxes of the screen that must be drawn again.
+ * Redrawing only these (instead of the whole screen) saves most of the
+ * work, for example when only the mouse pointer moved.
+ */
+struct rect { int x, y, w, h; };
+
+#define MAX_DAMAGE 8
+
+static struct rect damage[MAX_DAMAGE];
+static int ndamage;
+
+/* the box of the button under the mouse (for hover colours) */
+static struct rect hover;
+static int last_minute = -1;
 
 /* what the mouse is doing right now */
 enum { DRAG_NONE, DRAG_MOVE, DRAG_RESIZE };
@@ -54,14 +69,80 @@ static int inside(int px, int py, int x, int y, int w, int h) {
     return px >= x && py >= y && px < x + w && py < y + h;
 }
 
+static int overlaps(struct rect *a, struct rect *b) {
+
+    return a->x < b->x + b->w + 16 && b->x < a->x + a->w + 16 &&
+           a->y < b->y + b->h + 16 && b->y < a->y + a->h + 16;
+}
+
+static struct rect join(struct rect a, struct rect b) {
+
+    int x0 = a.x < b.x ? a.x : b.x;
+    int y0 = a.y < b.y ? a.y : b.y;
+    int x1 = a.x + a.w > b.x + b.w ? a.x + a.w : b.x + b.w;
+    int y1 = a.y + a.h > b.y + b.h ? a.y + a.h : b.y + b.h;
+
+    return (struct rect){x0, y0, x1 - x0, y1 - y0};
+}
+
+/* Mark a box of the screen as "must be drawn again". */
+void wm_damage(int x, int y, int w, int h) {
+
+    if (w <= 0 || h <= 0)
+        return;
+
+    struct rect r = {x, y, w, h};
+
+    /* boxes that touch become one bigger box */
+    for (int i = 0; i < ndamage; i++) {
+
+        if (overlaps(&damage[i], &r)) {
+
+            r = join(damage[i], r);
+            damage[i] = damage[--ndamage];
+            i = -1;              /* the bigger box may touch others now */
+        }
+    }
+
+    if (ndamage == MAX_DAMAGE) {
+
+        /* too many small boxes: one box around all of them */
+        for (int i = 0; i < ndamage; i++)
+            r = join(r, damage[i]);
+
+        ndamage = 0;
+    }
+
+    damage[ndamage++] = r;
+}
+
 void wm_redraw(void) {
 
-    need_redraw = 1;
+    ndamage = 0;
+    wm_damage(0, 0, screen_w, screen_h);
+}
+
+/* a window plus its shadow */
+void wm_damage_window(struct window *win) {
+
+    if (!win->minimized)
+        wm_damage(win->x - 2, win->y - 2, win->w + 8, win->h + 10);
 }
 
 int wm_needs_redraw(void) {
 
-    return need_redraw;
+    return ndamage > 0;
+}
+
+int wm_wants_seconds(void) {
+
+    for (int i = 0; i < nwin; i++) {
+
+        if (wins[i]->tick && !wins[i]->minimized)
+            return 1;
+    }
+
+    return 0;
 }
 
 void content_box(struct window *win, int *x, int *y, int *w, int *h) {
@@ -126,7 +207,7 @@ static void raise_window(struct window *win) {
     wins[nwin - 1] = win;
     win->minimized = 0;
 
-    need_redraw = 1;
+    wm_redraw();
 }
 
 /* ---------- creating and closing windows ---------- */
@@ -161,7 +242,7 @@ struct window *wm_new_window(const char *title, int w, int h) {
     snprintf(win->title, sizeof(win->title), "%s", title);
 
     wins[nwin++] = win;
-    need_redraw = 1;
+    wm_redraw();
 
     return win;
 }
@@ -189,7 +270,7 @@ void wm_cleanup(void) {
         if (wins[i]->want_close) {
 
             destroy(wins[i]);
-            need_redraw = 1;
+            wm_redraw();
         }
         else {
 
@@ -234,12 +315,22 @@ void wm_tick(void) {
 
     for (int i = 0; i < nwin; i++) {
 
-        if (wins[i]->tick)
+        if (wins[i]->tick && !wins[i]->minimized) {
+
             wins[i]->tick(wins[i]);
+            wm_damage_window(wins[i]);
+        }
     }
 
-    /* the clock in the taskbar */
-    need_redraw = 1;
+    /* the clock in the taskbar changes once a minute */
+    time_t t = time(NULL);
+    int minute = (int)(t / 60);
+
+    if (minute != last_minute) {
+
+        last_minute = minute;
+        wm_damage(screen_w - 160, screen_h - TASKBAR_H, 160, TASKBAR_H);
+    }
 }
 
 /* ---------- icons, drawn with shapes ---------- */
@@ -630,7 +721,7 @@ static void draw_window(struct window *win, int active) {
     fill(x + w - 5, y + h - 9, 2, 2, 0x8C959F);
 }
 
-void wm_draw(void) {
+static void draw_scene(void) {
 
     restore_background();
 
@@ -650,10 +741,23 @@ void wm_draw(void) {
         draw_menu();
 
     draw_cursor(mouse_x, mouse_y);
+}
 
-    gfx_flush();
+/* Draw every damaged box again, then copy just those boxes to the screen. */
+void wm_draw(void) {
 
-    need_redraw = 0;
+    for (int i = 0; i < ndamage; i++) {
+
+        struct rect *r = &damage[i];
+
+        gfx_area(r->x, r->y, r->w, r->h);
+        draw_scene();
+        gfx_flush_rect(r->x, r->y, r->w, r->h);
+    }
+
+    ndamage = 0;
+
+    gfx_area(0, 0, screen_w, screen_h);
 }
 
 /* ---------- mouse and keyboard ---------- */
@@ -667,7 +771,7 @@ static void launch(int i) {
     else if (i == LAUNCHERS)
         wm_quit = 1;
 
-    need_redraw = 1;
+    wm_redraw();
 }
 
 static struct window *window_at(int px, int py) {
@@ -704,7 +808,7 @@ static void mouse_down(struct event *ev) {
     last_click_x = px;
     last_click_y = py;
 
-    need_redraw = 1;
+    wm_redraw();
 
     /* 1. the start menu is open: it gets the click */
     if (menu_open) {
@@ -808,14 +912,67 @@ static void mouse_down(struct event *ev) {
         launch(icon);
 }
 
-static void mouse_move(void) {
+/* The box of the button under the point, if it changes colour on hover. */
+static struct rect hover_box(int px, int py) {
+
+    struct rect none = {0, 0, 0, 0};
+
+    if (menu_open && in_menu(px, py)) {
+
+        int i = menu_item_at(px, py);
+        int x, y;
+
+        if (i < 0)
+            return none;
+
+        menu_box(&x, &y);
+
+        return (struct rect){x + 6, y + MENU_HEAD + 4 + i * MENU_ITEM + (i == LAUNCHERS ? 8 : 0),
+                             MENU_W - 12, MENU_ITEM};
+    }
+
+    if (py >= screen_h - TASKBAR_H)
+        return px < START_W ? (struct rect){0, screen_h - TASKBAR_H, START_W, TASKBAR_H} : none;
+
+    struct window *win = window_at(px, py);
+
+    if (!win || py >= win->y + TITLE_H)
+        return none;
+
+    if (px >= win->x + win->w - BUTTON_W)
+        return (struct rect){win->x + win->w - BUTTON_W, win->y, BUTTON_W, TITLE_H};
+
+    if (px >= win->x + win->w - 2 * BUTTON_W)
+        return (struct rect){win->x + win->w - 2 * BUTTON_W, win->y, BUTTON_W, TITLE_H};
+
+    return none;
+}
+
+static void mouse_move(int old_x, int old_y) {
+
+    /* the pointer itself: where it was, and where it is now */
+    wm_damage(old_x, old_y, CURSOR_W, CURSOR_H);
+    wm_damage(mouse_x, mouse_y, CURSOR_W, CURSOR_H);
+
+    /* a button that lights up (or stops lighting up) under the pointer */
+    struct rect now = hover_box(mouse_x, mouse_y);
+
+    if (now.x != hover.x || now.y != hover.y || now.w != hover.w || now.h != hover.h) {
+
+        wm_damage(hover.x, hover.y, hover.w, hover.h);
+        wm_damage(now.x, now.y, now.w, now.h);
+        hover = now;
+    }
 
     if (drag_mode == DRAG_MOVE && drag_win) {
+
+        wm_damage_window(drag_win);
 
         drag_win->x = mouse_x - drag_dx;
         drag_win->y = mouse_y - drag_dy;
 
         keep_on_screen(drag_win);
+        wm_damage_window(drag_win);
     }
     else if (drag_mode == DRAG_RESIZE && drag_win) {
 
@@ -827,15 +984,17 @@ static void mouse_move(void) {
 
         if (w != drag_win->w || h != drag_win->h) {
 
+            wm_damage_window(drag_win);
+
             drag_win->w = w;
             drag_win->h = h;
 
             if (drag_win->resized)
                 drag_win->resized(drag_win);
+
+            wm_damage_window(drag_win);
         }
     }
-
-    need_redraw = 1;
 }
 
 static void key_press(struct event *ev) {
@@ -871,21 +1030,24 @@ static void key_press(struct event *ev) {
         if (top)
             top->want_close = 1;
 
-        need_redraw = 1;
+        wm_redraw();
         return;
     }
 
     if (ev->key == 27 && menu_open) {
 
         menu_open = 0;
-        need_redraw = 1;
+        wm_redraw();
         return;
     }
 
     if (top && top->key) {
 
         top->key(top, ev);
-        need_redraw = 1;
+
+        /* the Terminal redraws itself when the shell answers */
+        if (!top->fd)
+            wm_damage_window(top);
     }
 }
 
@@ -894,7 +1056,7 @@ void wm_event(struct event *ev) {
     switch (ev->type) {
 
         case EV_MOUSE_MOVE:
-            mouse_move();
+            mouse_move(ev->value >> 16, ev->value & 0xffff);
             break;
 
         case EV_MOUSE_DOWN:
@@ -904,7 +1066,6 @@ void wm_event(struct event *ev) {
         case EV_MOUSE_UP:
             drag_mode = DRAG_NONE;
             drag_win = NULL;
-            need_redraw = 1;
             break;
 
         case EV_WHEEL: {
@@ -914,7 +1075,7 @@ void wm_event(struct event *ev) {
             if (win && win->wheel) {
 
                 win->wheel(win, ev->value);
-                need_redraw = 1;
+                wm_damage_window(win);
             }
 
             break;
@@ -930,7 +1091,7 @@ void wm_event(struct event *ev) {
 
 void wm_draw_wallpaper(void) {
 
-    gfx_noclip();
+    gfx_area(0, 0, screen_w, screen_h);
 
     gradient(0, 0, screen_w, screen_h, 0x0B1A33, 0x1D3B61);
 

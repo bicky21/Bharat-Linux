@@ -6,8 +6,9 @@
  *        /dev/fb*            video  660
  *        /dev/input/event*   input  660
  *    so that users in those groups may use the screen and the mouse.
- *    It checks again every 2 seconds, because devices can appear later
- *    (a driver finishing its start-up, a USB mouse plugged in).
+ *    Devices can appear later (a driver finishing its start-up, a USB
+ *    mouse plugged in). The kernel tells us about new files in /dev
+ *    through inotify, so devd sleeps until then and uses no processor.
  */
 
 #include <stdio.h>
@@ -15,6 +16,8 @@
 #include <string.h>
 #include <glob.h>
 #include <unistd.h>
+#include <poll.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
@@ -98,6 +101,15 @@ static void apply_rules(void) {
     fclose(f);
 }
 
+/* the folders where device files appear */
+static const char *watched[] = {"/dev", "/dev/input", "/dev/dri"};
+
+static void watch_folders(int fd) {
+
+    for (int i = 0; i < 3; i++)
+        inotify_add_watch(fd, watched[i], IN_CREATE);   /* fails quietly if missing */
+}
+
 int main(void) {
 
     if (getuid() != 0) {
@@ -106,11 +118,38 @@ int main(void) {
         return 1;
     }
 
+    int fd = inotify_init1(IN_CLOEXEC);
+
+    if (fd >= 0)
+        watch_folders(fd);
+
     load_modules();
 
     while (1) {
 
         apply_rules();
-        sleep(2);
+
+        if (fd < 0) {
+
+            sleep(5);          /* no inotify: fall back to looking now and then */
+            continue;
+        }
+
+        /* sleep until something is created (at most 5 minutes) */
+        struct pollfd p = {.fd = fd, .events = POLLIN};
+
+        if (poll(&p, 1, 5 * 60 * 1000) > 0) {
+
+            char buf[4096];
+
+            if (read(fd, buf, sizeof(buf)) < 0)
+                continue;
+
+            /* a folder such as /dev/input may have just been created */
+            watch_folders(fd);
+
+            /* give the kernel a moment to finish creating the device */
+            usleep(100 * 1000);
+        }
     }
 }

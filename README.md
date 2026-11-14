@@ -24,12 +24,15 @@ desktop.
 
 ## Build and run
 
-You need: `gcc`, `make`, static libc (`libc6-dev`), `e2fsprogs`, `cpio`,
-`fakeroot` and `qemu-system-x86`. On Ubuntu:
+You need: `gcc`, `make`, `musl-tools`, `e2fsprogs`, `cpio`, `fakeroot`
+and `qemu-system-x86`. On Ubuntu:
 
 ```sh
-sudo apt install build-essential e2fsprogs cpio fakeroot qemu-system-x86
+sudo apt install build-essential musl-tools e2fsprogs cpio fakeroot qemu-system-x86
 ```
+
+`musl-tools` is optional but recommended: with it, all programs together
+take about 3 MB instead of 46 MB (see "Light on resources" below).
 
 Then:
 
@@ -103,6 +106,30 @@ How it fits together:
 The fonts are turned into C tables by `tools/make-fonts.py`
 (licence: `fonts/LICENSE-DejaVu.txt`).
 
+## Light on resources
+
+Bharat-linux is built to run on small machines and to leave your PC alone.
+
+| | |
+|---|---|
+| Whole running system with the desktop | about 40 MB of memory |
+| QEMU memory | 256 MB (`run.sh`) |
+| All programs in `/bin` | about 3 MB (built with musl), plus BusyBox 2 MB |
+| Disk image | 256 MB file, about 25 MB actually used |
+| Desktop when nothing happens | 0% processor: it wakes up once a minute (clock) |
+
+How:
+
+- **Small programs**: `make` uses musl, a small C library, when it is
+  installed, and builds with `-Os` and `--gc-sections` (leave out unused
+  code). `make LIBC=glibc` builds with the normal C library instead.
+- **Redraw only what changed**: the desktop remembers which boxes of the
+  screen changed (the mouse pointer, one line of the terminal) and redraws
+  only those, instead of the whole 1024x768 screen.
+- **Sleep instead of checking**: the desktop, `devd` and `serviced` sleep
+  until the kernel wakes them (a key press, a new device, a stopped
+  service). Nothing checks "every few seconds" any more.
+
 ## Shell quick guide
 
 ```sh
@@ -125,6 +152,7 @@ Start-up commands go in `~/.bharatrc`.
 src/        all C source code (src/desktop/ = the graphical desktop)
 rootfs/     the files that end up on the disk (/etc, /home, /bin, ...)
 images/     built disk images (not stored in git)
+build/      build helpers (build/musl-include is made by make)
 Makefile    build rules
 rebuild.sh  builds images/bharat.img
 run.sh      starts QEMU
