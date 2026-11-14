@@ -13,6 +13,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <time.h>
 #include <linux/kd.h>
@@ -78,7 +79,37 @@ static void explain_screen_error(int err) {
                "the 'video' group in /etc/group, then log in again.\n");
 }
 
+/*
+ * Only one desktop may run at a time: a second one would fight the first
+ * for the screen, keyboard and mouse. Two checks:
+ *   1. BHARAT_DESKTOP is set in every Terminal the desktop opens.
+ *   2. A lock on a file in /tmp, held while the desktop runs.
+ */
+static int already_running(void) {
+
+    if (getenv("BHARAT_DESKTOP"))
+        return 1;
+
+    int fd = open("/tmp/.bharat-desktop.lock", O_RDONLY | O_CREAT | O_CLOEXEC, 0644);
+
+    if (fd < 0)
+        fd = open("/tmp/.bharat-desktop.lock", O_RDONLY | O_CLOEXEC);
+
+    /* the lock stays ours until this program ends (fd is never closed) */
+    return fd >= 0 && flock(fd, LOCK_EX | LOCK_NB) != 0;
+}
+
 int main(void) {
+
+    if (already_running()) {
+
+        printf("The desktop is already running.\n"
+               "This Terminal is inside it: just keep working here.\n");
+        return 1;
+    }
+
+    /* programs started from the desktop (Terminal) inherit this */
+    setenv("BHARAT_DESKTOP", "1", 1);
 
     int err = gfx_open();
 
