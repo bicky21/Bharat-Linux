@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <linux/kd.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -137,9 +138,24 @@ pid_t start_login() {
 
         if (graphical) {
 
+            /* its error messages go to a log file, not over the picture */
+            int log = open("/var/log/greeter.log", O_WRONLY | O_CREAT | O_APPEND, 0600);
+
+            if (log >= 0) {
+
+                dup2(log, STDERR_FILENO);
+                close(log);
+            }
+
             execl("/bin/greeter", "/bin/greeter", NULL);
             _exit(3);
         }
+
+        /*
+         * If the login screen stopped in graphics mode, the text would be
+         * invisible (a black screen): always switch back to text first.
+         */
+        ioctl(STDIN_FILENO, KDSETMODE, KD_TEXT);
 
         banner();
 

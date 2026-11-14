@@ -75,7 +75,58 @@ static void console_graphics(int on) {
     }
 }
 
-/* /etc/greeter.conf:  autologin=bicky */
+/* Waits (at most 3 seconds) until the framebuffer text console is active. */
+static void wait_for_text_console(void) {
+
+    for (int tries = 0; tries < 60; tries++) {
+
+        for (int i = 0; i < 4; i++) {
+
+            char path[64], name[128] = "", bind[8] = "";
+
+            snprintf(path, sizeof(path), "/sys/class/vtconsole/vtcon%d/name", i);
+
+            FILE *f = fopen(path, "r");
+
+            if (!f)
+                continue;
+
+            if (!fgets(name, sizeof(name), f))
+                name[0] = 0;
+
+            fclose(f);
+
+            snprintf(path, sizeof(path), "/sys/class/vtconsole/vtcon%d/bind", i);
+            f = fopen(path, "r");
+
+            if (f) {
+
+                if (!fgets(bind, sizeof(bind), f))
+                    bind[0] = 0;
+
+                fclose(f);
+            }
+
+            if (strstr(name, "frame buffer") && bind[0] == '1') {
+
+                usleep(150 * 1000);     /* let it finish drawing */
+                return;
+            }
+        }
+
+        usleep(50 * 1000);
+    }
+}
+
+/* If the greeter ever crashes, give the screen back to the text console. */
+static void on_crash(int sig) {
+
+    console_graphics(0);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+/* /etc/greeter.conf:  autologin=NAME */
 static void read_config(char *autologin, size_t size) {
 
     autologin[0] = 0;
@@ -201,17 +252,32 @@ static void splash_frame(long long t) {
     gfx_area(0, 0, screen_w, screen_h);
 }
 
-static void splash(void) {
+/* The whole boot picture at moment t, copied to the screen in one go. */
+static void splash_repaint(long long t) {
 
     gfx_area(0, 0, screen_w, screen_h);
     fill(0, 0, screen_w, screen_h, BG_TOP);
 
-    if (!logo)
+    if (logo)
+        draw_image_alpha(logo, logo_x(), logo_y(), (int)(255 * ease_out(t, 900)));
+    else
         center_text(&font_big, screen_h / 2 - 40, "Bharat Linux", C_WHITE);
 
+    if (t > 600) {
+
+        int tw = text_width(&font_ui, SPLASH_TEXT);
+
+        text_alpha(&font_ui, (screen_w - tw) / 2, splash_text_y(), SPLASH_TEXT, 0x8B949E,
+                   (int)(255 * ease_out(t - 600, 600)));
+    }
+
     gfx_flush();
+}
+
+static void splash(void) {
 
     long long start = now_ms();
+    long long last_repaint = -1000;
 
     /*
      * Show the animation for at least 3 seconds, then go on as soon as
@@ -223,6 +289,16 @@ static void splash(void) {
 
         if ((t > 3000 && input_has_mouse()) || t > 7000)
             break;
+
+        /*
+         * Every half second, paint the whole picture again: if anything
+         * else drew on the screen meanwhile, it does not stay visible.
+         */
+        if (t - last_repaint >= 500) {
+
+            splash_repaint(t);
+            last_repaint = t;
+        }
 
         splash_frame(t);
 
@@ -678,6 +754,10 @@ static void leave_to_text_mode(void) {
 
 static void key_press(struct event *ev) {
 
+    /* Ctrl+Alt+F2: the text console, like on other Linux systems */
+    if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_ALT) && ev->key == K_F2)
+        leave_to_text_mode();
+
     char *value = form->values[focus];
     size_t size = form->sizes[focus];
     size_t len = strlen(value);
@@ -749,16 +829,23 @@ int main(void) {
 
     signal(SIGINT, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGSEGV, on_crash);
+    signal(SIGABRT, on_crash);
+    signal(SIGBUS, on_crash);
 
     load_timezone();
 
     /*
-     * Write a line to the text console before opening the screen.
-     * We found that if nothing has been written to the console since
-     * boot, our pictures never reach the display (it stays black).
+     * Ubuntu's kernel starts the graphical text console late ("deferred
+     * takeover"): only after the first text is printed, and then a moment
+     * later in the background. If we draw before that moment, the
+     * console's start-up wipes our picture: a black screen. So print a
+     * line, then wait until the console has really started.
+     * (run.sh also passes fbcon=nodefer, which starts it at boot.)
      */
     printf("\033[H\033[2JStarting Bharat Linux\n");
     fflush(stdout);
+    wait_for_text_console();
 
     if (gfx_open() < 0)
         return EXIT_NO_SCREEN;

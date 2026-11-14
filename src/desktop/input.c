@@ -253,6 +253,7 @@ static int translate(int code) {
         case KEY_PAGEDOWN:  return K_PGDN;
         case KEY_DELETE:    return K_DELETE;
         case KEY_F4:        return K_F4;
+        case KEY_F2:        return K_F2;
         case KEY_KPENTER:   return '\r';
         case KEY_BACKSPACE: return '\b';
     }
