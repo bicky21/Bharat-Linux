@@ -1,8 +1,6 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
-#include "libperm.h"
+#include <errno.h>
 
 int main(int argc, char *argv[]) {
 
@@ -17,41 +15,30 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if (argc != 2) {
+    int failed = 0;
 
-        printf("usage: cat [file]\n");
+    for (int i = 1; i < argc; i++) {
 
-        return 1;
+        /* the kernel decides if this user may read the file */
+        FILE *f = fopen(argv[i], "r");
+
+        if (!f) {
+
+            printf("cat: %s: %s\n", argv[i], strerror(errno));
+
+            failed = 1;
+
+            continue;
+        }
+
+        /* int, not char: otherwise the byte 0xFF looks like end-of-file */
+        int c;
+
+        while ((c = fgetc(f)) != EOF)
+            putchar(c);
+
+        fclose(f);
     }
 
-    char *user = getenv("USER");
-
-    if (!user)
-        user = "unknown";
-
-    if (!check_perm(argv[1], user)) {
-
-        printf("Permission denied\n");
-
-        return 1;
-    }
-
-    FILE *f = fopen(argv[1], "r");
-
-    if (!f) {
-
-        printf("Cannot open file\n");
-
-        return 1;
-    }
-
-    /* int, not char: otherwise the byte 0xFF looks like end-of-file */
-    int c;
-
-    while ((c = fgetc(f)) != EOF)
-        putchar(c);
-
-    fclose(f);
-
-    return 0;
+    return failed;
 }

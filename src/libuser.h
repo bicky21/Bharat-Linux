@@ -1,0 +1,306 @@
+#ifndef LIBUSER_H
+#define LIBUSER_H
+
+/*
+ * Bharat-linux user database.
+ *
+ * /etc/passwd   name:x:uid:gid:home:shell      (everyone may read it)
+ * /etc/shadow   name:password-hash             (only root may read it)
+ *
+ * Passwords are never stored as text. Only a one-way SHA-512 hash is
+ * stored, so reading the file does not reveal the password.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <crypt.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+struct bharat_user {
+    char name[64];
+    uid_t uid;
+    gid_t gid;
+    char home[128];
+    char shell[128];
+};
+
+/* Reads one passwd line into u. Returns 1 if the line is valid. */
+static inline int parse_passwd_line(char *line,
+                                    struct bharat_user *u) {
+
+    char *field[6];
+    int count = 0;
+
+    line[strcspn(line, "\r\n")] = 0;
+
+    char *p = line;
+
+    while (count < 6) {
+
+        field[count++] = p;
+
+        p = strchr(p, ':');
+
+        if (!p)
+            break;
+
+        *p++ = 0;
+    }
+
+    if (count != 6 || field[0][0] == 0)
+        return 0;
+
+    snprintf(u->name, sizeof(u->name), "%s", field[0]);
+    u->uid = (uid_t)atoi(field[2]);
+    u->gid = (gid_t)atoi(field[3]);
+    snprintf(u->home, sizeof(u->home), "%s", field[4]);
+    snprintf(u->shell, sizeof(u->shell), "%s", field[5]);
+
+    return 1;
+}
+
+/* Find a user by name (or by uid when name is NULL). Returns 1 if found. */
+static inline int find_user(const char *name,
+                            uid_t uid,
+                            struct bharat_user *u) {
+
+    FILE *f = fopen("/etc/passwd", "r");
+
+    if (!f)
+        return 0;
+
+    char line[512];
+
+    while (fgets(line, sizeof(line), f)) {
+
+        if (!parse_passwd_line(line, u))
+            continue;
+
+        if (name ? strcmp(u->name, name) == 0 : u->uid == uid) {
+
+            fclose(f);
+
+            return 1;
+        }
+    }
+
+    fclose(f);
+
+    return 0;
+}
+
+/* The name of the user running this program ("unknown" if not listed). */
+static inline const char *current_user_name(void) {
+
+    static struct bharat_user u;
+
+    if (find_user(NULL, getuid(), &u))
+        return u.name;
+
+    return "unknown";
+}
+
+/* Copies the stored hash of a user into hash. Needs root. */
+static inline int read_hash(const char *name,
+                            char *hash,
+                            size_t size) {
+
+    FILE *f = fopen("/etc/shadow", "r");
+
+    if (!f)
+        return 0;
+
+    char line[512];
+
+    while (fgets(line, sizeof(line), f)) {
+
+        line[strcspn(line, "\r\n")] = 0;
+
+        char *colon = strchr(line, ':');
+
+        if (!colon)
+            continue;
+
+        *colon = 0;
+
+        if (strcmp(line, name) == 0) {
+
+            snprintf(hash, size, "%s", colon + 1);
+
+            fclose(f);
+
+            return 1;
+        }
+    }
+
+    fclose(f);
+
+    return 0;
+}
+
+/* Compare without stopping at the first difference (hides timing). */
+static inline int same_text(const char *a,
+                            const char *b) {
+
+    size_t la = strlen(a);
+    size_t lb = strlen(b);
+    unsigned char diff = la != lb;
+
+    for (size_t i = 0; i < la && i < lb; i++)
+        diff |= (unsigned char)(a[i] ^ b[i]);
+
+    return diff == 0;
+}
+
+/* Returns 1 if password is the right one for this user. Needs root. */
+static inline int check_password(const char *name,
+                                 const char *password) {
+
+    char hash[256];
+
+    if (!read_hash(name, hash, sizeof(hash)))
+        return 0;
+
+    /* "!" or "*" means: this account has no valid password */
+    if (hash[0] != '$')
+        return 0;
+
+    /* crypt() repeats the same recipe (salt) that is stored in the hash */
+    char *result = crypt(password, hash);
+
+    return result && same_text(result, hash);
+}
+
+/* Makes a new SHA-512 hash with a fresh random salt. Returns 1 if ok. */
+static inline int make_hash(const char *password,
+                            char *hash,
+                            size_t size) {
+
+    static const char letters[] =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
+
+    unsigned char random[16];
+    char salt[32] = "$6$";
+
+    int fd = open("/dev/urandom", O_RDONLY);
+
+    if (fd < 0)
+        return 0;
+
+    ssize_t got = read(fd, random, sizeof(random));
+
+    close(fd);
+
+    if (got != (ssize_t)sizeof(random))
+        return 0;
+
+    for (int i = 0; i < 16; i++)
+        salt[3 + i] = letters[random[i] % 64];
+
+    salt[19] = '$';
+    salt[20] = 0;
+
+    char *result = crypt(password, salt);
+
+    if (!result || result[0] != '$')
+        return 0;
+
+    snprintf(hash, size, "%s", result);
+
+    return 1;
+}
+
+/* Stores a new hash for a user in /etc/shadow. Needs root. */
+static inline int write_hash(const char *name,
+                             const char *hash) {
+
+    FILE *in = fopen("/etc/shadow", "r");
+
+    int fd = open("/etc/shadow.tmp",
+                  O_WRONLY | O_CREAT | O_TRUNC,
+                  0600);
+
+    if (fd < 0) {
+
+        if (in)
+            fclose(in);
+
+        return 0;
+    }
+
+    FILE *out = fdopen(fd, "w");
+
+    char line[512];
+    int replaced = 0;
+
+    while (in && fgets(line, sizeof(line), in)) {
+
+        size_t len = strlen(name);
+
+        if (strncmp(line, name, len) == 0 && line[len] == ':') {
+
+            fprintf(out, "%s:%s\n", name, hash);
+            replaced = 1;
+        }
+        else {
+
+            fputs(line, out);
+        }
+    }
+
+    if (!replaced)
+        fprintf(out, "%s:%s\n", name, hash);
+
+    if (in)
+        fclose(in);
+
+    if (fclose(out) != 0)
+        return 0;
+
+    /* rename swaps the file in one step, so it is never half-written */
+    return rename("/etc/shadow.tmp", "/etc/shadow") == 0;
+}
+
+/* Reads a line from the keyboard without showing it. Returns 1 if ok. */
+#include <termios.h>
+
+static inline int read_hidden(const char *prompt,
+                              char *out,
+                              size_t size) {
+
+    struct termios old, hidden;
+    int has_terminal = tcgetattr(STDIN_FILENO, &old) == 0;
+
+    printf("%s", prompt);
+    fflush(stdout);
+
+    if (has_terminal) {
+
+        hidden = old;
+        hidden.c_lflag &= ~ECHO;
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &hidden);
+    }
+
+    char *typed = fgets(out, size, stdin);
+
+    if (has_terminal) {
+
+        tcsetattr(STDIN_FILENO, TCSANOW, &old);
+
+        printf("\n");
+    }
+
+    if (!typed)
+        return 0;
+
+    out[strcspn(out, "\r\n")] = 0;
+
+    return 1;
+}
+
+#endif

@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+
+#include "libuser.h"
 #include <stdlib.h>
 
 int main() {
@@ -16,10 +18,7 @@ int main() {
     char user[64];
     char group[64];
 
-    char *current = getenv("USER");
-
-    if (!current)
-        current = "unknown";
+    const char *current = current_user_name();
 
     while (fscanf(f,
                   "%63s %63s",

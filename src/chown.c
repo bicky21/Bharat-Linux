@@ -1,8 +1,9 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
-#include "libperm.h"
+#include "libuser.h"
 
 int main(int argc, char *argv[]) {
 
@@ -13,40 +14,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char *user = getenv("USER");
+    struct bharat_user owner;
 
-    if (!user)
-        user = "unknown";
+    if (!find_user(argv[1], 0, &owner)) {
 
-    /* only root or the current owner may give a file away */
-    if (!check_perm(argv[2], user)) {
-
-        printf("Permission denied\n");
+        printf("chown: no such user: %s\n", argv[1]);
 
         return 1;
     }
 
-    char full[PATH_MAX];
+    /* the kernel only lets root give a file to somebody else */
+    if (chown(argv[2], owner.uid, owner.gid) != 0) {
 
-    full_path(argv[2], full, sizeof(full));
-
-    FILE *f = fopen("/etc/owners", "a");
-
-    if (!f) {
-
-        printf("Cannot open owners database\n");
+        printf("chown: %s: %s\n", argv[2], strerror(errno));
 
         return 1;
     }
-
-    fprintf(f,
-            "%s %s\n",
-            full,
-            argv[1]);
-
-    fclose(f);
-
-    printf("Ownership updated\n");
 
     return 0;
 }

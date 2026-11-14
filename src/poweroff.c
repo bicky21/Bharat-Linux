@@ -12,7 +12,7 @@ int main() {
 
     reboot(RB_POWER_OFF);
 
-    printf("Poweroff failed\n");
+    printf("Only root can power off. Use: sudo poweroff\n");
 
     return 1;
 }

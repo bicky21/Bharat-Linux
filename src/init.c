@@ -148,9 +148,6 @@ int main() {
     mount_fs("tmpfs", "/run", "tmpfs", "mode=0755");
     mount_fs("tmpfs", "/tmp", "tmpfs", "mode=1777");
 
-    /* the process list used by ps and kill */
-    close(open("/run/processes.db", O_WRONLY | O_CREAT, 0644));
-
     setenv("PATH", "/bin:/usr/bin", 1);
 
     set_hostname();

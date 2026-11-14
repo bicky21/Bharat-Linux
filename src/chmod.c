@@ -1,27 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
-
-#include "libperm.h"
 
 int main(int argc, char *argv[]) {
 
     if (argc < 3) {
 
         printf("Usage: chmod <mode> <file>\n");
-
-        return 1;
-    }
-
-    char *user = getenv("USER");
-
-    if (!user)
-        user = "unknown";
-
-    if (!check_perm(argv[2], user)) {
-
-        printf("Permission denied\n");
 
         return 1;
     }
@@ -37,30 +24,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* the kernel only lets the owner (or root) do this */
     if (chmod(argv[2], (mode_t)mode) != 0) {
 
-        printf("chmod failed\n");
+        printf("chmod: %s: %s\n", argv[2], strerror(errno));
 
         return 1;
     }
-
-    char full[PATH_MAX];
-
-    full_path(argv[2], full, sizeof(full));
-
-    FILE *f = fopen("/etc/perms", "a");
-
-    if (f) {
-
-        fprintf(f,
-                "%s %s\n",
-                full,
-                argv[1]);
-
-        fclose(f);
-    }
-
-    printf("Permissions updated\n");
 
     return 0;
 }

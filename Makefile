@@ -9,6 +9,8 @@
 CC      ?= gcc
 CFLAGS  ?= -O2 -Wall -Wextra
 LDFLAGS ?= -static
+# libcrypt gives us crypt(), used to hash passwords (login, sudo, passwd)
+LDLIBS  ?= -lcrypt
 
 # every src/NAME.c becomes rootfs/bin/NAME, except init which is rootfs/init
 SOURCES  := $(wildcard src/*.c)
@@ -31,17 +33,19 @@ $(DIRS):
 	mkdir -p $@
 
 rootfs/init: src/init.c $(HEADERS) | $(DIRS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 rootfs/bin/%: src/%.c $(HEADERS) | $(DIRS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 # Kernel modules are skipped here: the network drivers are loaded from the
 # disk image instead, and leaving them out keeps this file small.
+# fakeroot lets the image record "owned by root" without needing sudo.
 initramfs: all
-	cd rootfs && find . -path ./lib/modules -prune -o -print \
-		| cpio -o -H newc --owner=0:0 2>/dev/null \
-		| gzip -9 > ../images/initramfs.cpio.gz
+	@fakeroot sh -c './tools/set-owners.sh rootfs && cd rootfs && \
+		find . -path ./lib/modules -prune -o -print \
+		| cpio -o -H newc 2>/dev/null \
+		| gzip -9 > ../images/initramfs.cpio.gz'
 	@echo "Built images/initramfs.cpio.gz"
 
 image: all

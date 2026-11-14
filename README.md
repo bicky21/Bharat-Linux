@@ -19,11 +19,11 @@ It boots in QEMU to a login prompt.
 
 ## Build and run
 
-You need: `gcc`, `make`, static libc (`libc6-dev`), `e2fsprogs`, `cpio`, and
-`qemu-system-x86`. On Ubuntu:
+You need: `gcc`, `make`, static libc (`libc6-dev`), `e2fsprogs`, `cpio`,
+`fakeroot` and `qemu-system-x86`. On Ubuntu:
 
 ```sh
-sudo apt install build-essential e2fsprogs cpio qemu-system-x86
+sudo apt install build-essential e2fsprogs cpio fakeroot qemu-system-x86
 ```
 
 Then:
@@ -35,7 +35,10 @@ make            # 1. compile every program in src/ into rootfs/
 ```
 
 Log in with user `bicky`, password `1234` (or `root` / `x`).
-Type `poweroff` to shut down.
+Type `sudo poweroff` to shut down (it asks for the root password).
+
+These two passwords are public defaults. Change them with `passwd` before
+using the system for anything real.
 
 Other ways to run:
 
@@ -87,21 +90,31 @@ run.sh      starts QEMU
 Compiled programs and kernel modules are **not** stored in git any more.
 `make` creates them again on your PC.
 
+## Users and security
+
+- `login` checks the password, then switches to the user's real uid and
+  gid. From then on the Linux kernel enforces every file permission.
+- Passwords are stored only as salted SHA-512 hashes in `/etc/shadow`,
+  which only root can read.
+- `sudo <command>` runs one command as root. `passwd` changes a password.
+- `ps` and `kill` work on the kernel's real process list.
+- Root owns the system files; each user owns only their home folder.
+
 ## Known limits (honest list)
 
-- Every program runs as Linux user root. "Users" are only the `USER`
-  variable, so the permission checks in `cat`, `touch`, `chown`, `chmod` and
-  `kill` are a courtesy, not real security.
-- Passwords in `/etc/passwd` are plain text.
+- No `adduser` yet: new users are added by editing `/etc/passwd` and
+  running `passwd <name>` as root.
+- `sudo` asks for the root password and has no per-user rules.
 - `nano` can only write a new file line by line; it cannot edit.
 - `ping` is a TCP connection test, not real ICMP.
 - `rootfs/advanced.sh` and `rootfs/check.sh` use syntax (`function`, `loop`,
   `if EXIST ... endif`) that the shell does not understand yet.
+- No graphical interface yet.
 
 ## Roadmap to an indigenous OS
 
-1. **Real users**: make `login` switch to the user's real uid/gid and hash
-   the passwords, so the kernel enforces permissions.
+1. **Real users** (done): `login` switches to the real uid/gid and
+   passwords are hashed, so the kernel enforces permissions.
 2. **Own tools instead of BusyBox**: write `ip`, `modprobe` and a DHCP client.
 3. **Better shell**: line editing, arrow-key history, `if/else`, functions.
 4. **Own kernel configuration**: build the Linux kernel from source with only
