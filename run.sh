@@ -49,8 +49,10 @@ else
     DISPLAY_ARGS=""
     # vga=0x318 asks the BIOS for a 1024x768 graphics screen, which the
     # kernel then offers as /dev/fb0 (the desktop draws there)
-    # loglevel=3 and the hidden cursor keep the boot screen clean
-    CONSOLE="vga=0x318 loglevel=3 vt.global_cursor_default=0"
+    # loglevel=3 and the hidden cursor keep the boot screen clean;
+    # fbcon=nodefer starts the graphical text console at once (Ubuntu
+    # kernels start it late, which can wipe the boot screen: black screen)
+    CONSOLE="vga=0x318 fbcon=nodefer loglevel=3 vt.global_cursor_default=0"
 fi
 
 # A USB tablet makes the pointer inside Bharat-linux follow your mouse,

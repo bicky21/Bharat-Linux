@@ -102,7 +102,7 @@ enum {
 /* keys that are not normal characters */
 enum {
     K_UP = 256, K_DOWN, K_LEFT, K_RIGHT,
-    K_HOME, K_END, K_PGUP, K_PGDN, K_DELETE, K_F4
+    K_HOME, K_END, K_PGUP, K_PGDN, K_DELETE, K_F4, K_F2
 };
 
 #define MOD_SHIFT 1
