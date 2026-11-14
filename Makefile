@@ -58,7 +58,7 @@ KERNEL_RELEASE := $(shell uname -r)
 
 .PHONY: all initramfs image modules clean
 
-all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/desktop
+all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
 
 $(DIRS):
@@ -79,6 +79,12 @@ rootfs/init: src/init.c $(HEADERS) | $(DIRS) $(EXTRA)
 
 rootfs/bin/%: src/%.c $(HEADERS) | $(DIRS) $(EXTRA)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
+
+# the boot and login screen shares the drawing and input code
+GREETER_SRC := src/greeter/greeter.c src/desktop/gfx.c src/desktop/input.c
+
+rootfs/bin/greeter: $(GREETER_SRC) $(DESKTOP_HDR) $(HEADERS) | $(DIRS) $(EXTRA)
+	$(CC) $(CFLAGS) -O2 $(LDFLAGS) -o $@ $(GREETER_SRC) -lm $(LDLIBS)
 
 # the desktop draws many pixels: optimise it for speed (-O2), not size
 rootfs/bin/desktop: $(DESKTOP_SRC) $(DESKTOP_HDR) | $(DIRS) $(EXTRA)
@@ -103,5 +109,5 @@ modules:
 	./tools/copy-modules.sh
 
 clean:
-	rm -f rootfs/init $(BINARIES) rootfs/bin/desktop images/initramfs.cpio.gz images/bharat.img
+	rm -f rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter images/initramfs.cpio.gz images/bharat.img
 	rm -rf build/musl-include

@@ -5,11 +5,13 @@
  *   1. mount the virtual filesystems (/proc, /sys, /dev, /run, /tmp)
  *   2. set the hostname
  *   3. start devd (drivers, device permissions) and the service manager
- *   4. keep a login prompt running on the console
+ *   4. keep a login running on the console: the graphical login screen
+ *      (greeter) when there is a graphics screen, else the text login
  *   5. collect ("reap") every finished process so no zombies pile up
  */
 
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,7 +105,28 @@ void open_terminal() {
     ioctl(STDIN_FILENO, TIOCSCTTY, 1);
 }
 
+/* which login runs next on the console */
+static int use_text_login;
+
+/* the graphical login needs a screen and the greeter program */
+static int graphics_available() {
+
+    return access("/dev/fb0", F_OK) == 0 &&
+           access("/bin/greeter", X_OK) == 0;
+}
+
+static void banner() {
+
+    printf("\n");
+    printf("=================================\n");
+    printf("        Bharat Linux            \n");
+    printf("=================================\n");
+    fflush(stdout);
+}
+
 pid_t start_login() {
+
+    int graphical = !use_text_login && graphics_available();
 
     pid_t pid = fork();
 
@@ -111,6 +134,14 @@ pid_t start_login() {
 
         setsid();
         open_terminal();
+
+        if (graphical) {
+
+            execl("/bin/greeter", "/bin/greeter", NULL);
+            _exit(3);
+        }
+
+        banner();
 
         execl("/bin/login",
               "/bin/login",
@@ -169,21 +200,19 @@ int main() {
 
     set_hostname();
 
-    printf("\n");
-    printf("=================================\n");
-    printf("        Bharat-linux CLI        \n");
-    printf("=================================\n");
-    fflush(stdout);
-
     start_devd();
     start_services();
 
+    int graphical = graphics_available();
     pid_t login = start_login();
+    time_t started = time(NULL);
+    int quick_failures = 0;
 
     while (1) {
 
         /* wait() returns for ANY finished child, including orphans */
-        pid_t done = wait(NULL);
+        int status = 0;
+        pid_t done = wait(&status);
 
         if (done < 0) {
 
@@ -197,9 +226,34 @@ int main() {
 
         if (done == login) {
 
+            int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+
+            if (graphical) {
+
+                /*
+                 * 2 = the user pressed "Text mode" on the login screen.
+                 * 3 = no screen after all. A greeter that keeps dying
+                 * within seconds also means: use the text login.
+                 */
+                if (code == 2 || code == 3)
+                    use_text_login = 1;
+                else if (time(NULL) - started < 5 && ++quick_failures >= 3)
+                    use_text_login = 1;
+
+                graphical = 0;
+            }
+            else {
+
+                /* after logging out of the text console, the login screen returns */
+                use_text_login = 0;
+                quick_failures = 0;
+            }
+
             /* small pause so a broken login cannot spin the CPU */
             sleep(1);
 
+            graphical = !use_text_login && graphics_available();
+            started = time(NULL);
             login = start_login();
         }
     }

@@ -76,6 +76,14 @@ void text_char(struct font *f, int x, int y, char ch, uint32_t c);
 void save_background(void);      /* remember the current picture... */
 void restore_background(void);   /* ...and paint it back quickly */
 
+struct image {
+    int w, h;
+    uint8_t *px;          /* red, green, blue, alpha for every pixel */
+};
+
+struct image *image_load(const char *path);
+void draw_image(struct image *img, int x, int y);
+
 void draw_logo(int x, int y, int size);
 void draw_cursor(int x, int y);
 
@@ -112,6 +120,8 @@ extern int mouse_x, mouse_y;
 
 int  input_open(void);           /* returns number of devices */
 void input_close(void);
+void input_release(void);        /* let another program have the devices */
+void input_take(void);           /* and take them back */
 void input_rescan(void);         /* look for newly plugged devices */
 int  input_watch_fd(void);       /* readable when /dev/input changes */
 void input_watch_read(void);
@@ -158,6 +168,12 @@ void wm_cleanup(void);             /* close windows that want to close */
 void wm_close_all(void);
 int  wm_needs_redraw(void);
 extern int wm_quit;
+extern int wm_exit_code;
+
+/* how the desktop ends; the login screen (greeter) acts on it */
+#define EXIT_LOGOUT   0
+#define EXIT_POWEROFF 10
+#define EXIT_REBOOT   11
 
 void content_box(struct window *win, int *x, int *y, int *w, int *h);
 

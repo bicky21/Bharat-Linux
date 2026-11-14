@@ -22,6 +22,7 @@ static struct window *wins[MAX_WINDOWS];   /* [0] = bottom, last = top */
 static int nwin;
 
 int wm_quit;
+int wm_exit_code;     /* what the login screen should do after we exit */
 
 /*
  * Damaged areas: the boxes of the screen that must be drawn again.
@@ -488,9 +489,58 @@ static int icon_at(int px, int py) {
 #define MENU_HEAD 70
 #define MENU_ITEM 38
 
+/*
+ * The bottom part of the menu. Started from the login screen (a
+ * "session"), the desktop offers Log out / Restart / Power off: it exits
+ * with a code and the login screen, which runs as root, does the rest.
+ * Started by hand from a shell, it only offers to exit.
+ */
+struct system_item {
+    const char *label;
+    int exit_code;
+    uint32_t color;
+};
+
+static struct system_item session_items[] = {
+    {"Log out",   EXIT_LOGOUT,   0x57606A},
+    {"Restart",   EXIT_REBOOT,   0x0969DA},
+    {"Power off", EXIT_POWEROFF, 0xCF222E},
+};
+
+static struct system_item shell_items[] = {
+    {"Exit desktop", EXIT_LOGOUT, 0xCF222E},
+};
+
+static struct system_item *system_items(int *count) {
+
+    if (getenv("BHARAT_SESSION")) {
+
+        *count = 3;
+        return session_items;
+    }
+
+    *count = 1;
+    return shell_items;
+}
+
+static int menu_items(void) {
+
+    int n;
+
+    system_items(&n);
+
+    return LAUNCHERS + n;
+}
+
 static int menu_h(void) {
 
-    return MENU_HEAD + (LAUNCHERS + 1) * MENU_ITEM + 18;
+    return MENU_HEAD + menu_items() * MENU_ITEM + 18;
+}
+
+/* top of item i (the system items sit below a line) */
+static int item_y(int menu_y, int i) {
+
+    return menu_y + MENU_HEAD + 4 + i * MENU_ITEM + (i >= LAUNCHERS ? 8 : 0);
 }
 
 static void menu_box(int *x, int *y) {
@@ -518,7 +568,7 @@ static void draw_menu(void) {
 
     /* header: logo, name, user */
     draw_logo(x + 16, y + 14, 42);
-    text(&font_bold, x + 70, y + 18, "Bharat-linux", C_TEXT);
+    text(&font_bold, x + 70, y + 18, "Bharat Linux", C_TEXT);
 
     char who[96];
     char *user = getenv("USER");
@@ -528,15 +578,14 @@ static void draw_menu(void) {
 
     fill(x + 12, y + MENU_HEAD - 1, MENU_W - 24, 1, C_BORDER);
 
-    for (int i = 0; i <= LAUNCHERS; i++) {
+    int count;
+    struct system_item *sys = system_items(&count);
 
-        int iy = y + MENU_HEAD + 4 + i * MENU_ITEM;
+    fill(x + 12, item_y(y, LAUNCHERS) - 6, MENU_W - 24, 1, C_BORDER);
 
-        if (i == LAUNCHERS) {
+    for (int i = 0; i < LAUNCHERS + count; i++) {
 
-            iy += 8;
-            fill(x + 12, iy - 6, MENU_W - 24, 1, C_BORDER);
-        }
+        int iy = item_y(y, i);
 
         if (inside(mouse_x, mouse_y, x + 6, iy, MENU_W - 12, MENU_ITEM))
             fill_round(x + 6, iy, MENU_W - 12, MENU_ITEM, 6, C_SELECT);
@@ -548,28 +597,28 @@ static void draw_menu(void) {
         }
         else {
 
+            struct system_item *s = &sys[i - LAUNCHERS];
+
             /* "power" symbol: a ring with a bar */
-            fill_circle(x + 28, iy + 19, 10, 0xCF222E);
+            fill_circle(x + 28, iy + 19, 10, s->color);
             fill_circle(x + 28, iy + 19, 7, C_WHITE);
             fill(x + 26, iy + 6, 5, 10, C_WHITE);
-            fill(x + 27, iy + 8, 3, 10, 0xCF222E);
-            text(&font_ui, x + 52, iy + 10, "Exit desktop", C_TEXT);
+            fill(x + 27, iy + 8, 3, 10, s->color);
+            text(&font_ui, x + 52, iy + 10, s->label, C_TEXT);
         }
     }
 }
 
-/* Returns the item number under the mouse, LAUNCHERS for "Exit", -1 none. */
+/* Returns the item number under the mouse, or -1. */
 static int menu_item_at(int px, int py) {
 
     int x, y;
 
     menu_box(&x, &y);
 
-    for (int i = 0; i <= LAUNCHERS; i++) {
+    for (int i = 0; i < menu_items(); i++) {
 
-        int iy = y + MENU_HEAD + 4 + i * MENU_ITEM + (i == LAUNCHERS ? 8 : 0);
-
-        if (inside(px, py, x + 6, iy, MENU_W - 12, MENU_ITEM))
+        if (inside(px, py, x + 6, item_y(y, i), MENU_W - 12, MENU_ITEM))
             return i;
     }
 
@@ -766,10 +815,18 @@ static void launch(int i) {
 
     menu_open = 0;
 
-    if (i >= 0 && i < LAUNCHERS)
+    int count;
+    struct system_item *sys = system_items(&count);
+
+    if (i >= 0 && i < LAUNCHERS) {
+
         launchers[i].open();
-    else if (i == LAUNCHERS)
+    }
+    else if (i >= LAUNCHERS && i < LAUNCHERS + count) {
+
+        wm_exit_code = sys[i - LAUNCHERS].exit_code;
         wm_quit = 1;
+    }
 
     wm_redraw();
 }
@@ -927,8 +984,7 @@ static struct rect hover_box(int px, int py) {
 
         menu_box(&x, &y);
 
-        return (struct rect){x + 6, y + MENU_HEAD + 4 + i * MENU_ITEM + (i == LAUNCHERS ? 8 : 0),
-                             MENU_W - 12, MENU_ITEM};
+        return (struct rect){x + 6, item_y(y, i), MENU_W - 12, MENU_ITEM};
     }
 
     if (py >= screen_h - TASKBAR_H)
@@ -999,9 +1055,10 @@ static void mouse_move(int old_x, int old_y) {
 
 static void key_press(struct event *ev) {
 
-    /* Ctrl+Alt+Backspace: leave the desktop */
+    /* Ctrl+Alt+Backspace: leave the desktop (log out) */
     if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_ALT) && ev->key == '\b') {
 
+        wm_exit_code = EXIT_LOGOUT;
         wm_quit = 1;
         return;
     }
@@ -1114,7 +1171,7 @@ void wm_draw_wallpaper(void) {
         }
     }
 
-    const char *mark = "Bharat-linux";
+    const char *mark = "Bharat Linux";
     int mw = text_width(&font_big, mark);
 
     text_alpha(&font_big, screen_w - mw - 30, screen_h - TASKBAR_H - 60, mark, C_WHITE, 70);
