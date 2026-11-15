@@ -6,7 +6,8 @@
  *   2. set the hostname
  *   3. mount the extra disks listed in /etc/fstab and turn on zram
  *      (compressed memory used as swap)
- *   4. start devd (drivers, device permissions, USB sticks) and the
+ *   4. start devd (drivers, device permissions, USB sticks), netd
+ *      (the network) and the
  *      service manager
  *   5. keep a login running on the console: the graphical login screen
  *      (greeter) when there is a graphics screen, else the text login
@@ -275,6 +276,18 @@ void start_devd() {
     }
 }
 
+/* netd: the network (wired cards, DHCP, name servers) */
+void start_netd() {
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        execl("/bin/netd", "/bin/netd", NULL);
+        _exit(1);
+    }
+}
+
 void start_services() {
 
     pid_t pid = fork();
@@ -313,7 +326,11 @@ int main() {
     mount_fstab(0, 1);
     start_zram();
 
+    /* "ping" for everyone, without root rights (ICMP sockets) */
+    write_text("/proc/sys/net/ipv4/ping_group_range", "0 2147483647");
+
     start_devd();
+    start_netd();
     start_services();
 
     /* "bharat.text" on the kernel command line: the text login only */

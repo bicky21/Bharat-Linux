@@ -17,10 +17,10 @@ Also borrowed, outside `/bin`:
 
 - The **Linux kernel** and its drivers (from the computer that builds
   Bharat Linux, see "Drivers" in the README). GPL-2.0.
-- **BusyBox** (`ip`, `udhcpc`) until our own network tools are ready. GPL-2.0.
 - **DejaVu fonts** (`fonts/LICENSE-DejaVu.txt`).
 
-Everything else (init, the shell, the 80 everyday commands, login, sudo,
+Everything else (init, the shell, the 86 everyday commands, login, sudo,
 the desktop, the disk tools `bdisk`, `bharat-disk`, `blkid`, `lsblk`,
-`mkswap`, USB handling in `devd`) is written from scratch in this
+`mkswap`, USB handling in `devd`, the network service `netd` with its
+DHCP client, `ip`, `ping`, `wget`, `ss`) is written from scratch in this
 repository.

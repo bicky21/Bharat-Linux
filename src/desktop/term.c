@@ -11,6 +11,7 @@
 
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -414,10 +415,100 @@ static void send(struct term *t, const char *s, size_t n) {
     }
 }
 
+/* paste: the clipboard's text, typed into the shell */
+static void paste(struct term *t) {
+
+    const char *c = clip_text();
+
+    if (c)
+        send(t, c, strlen(c));
+}
+
+/* copy: all the text on the screen (lines without trailing spaces) */
+static void copy_screen(struct term *t) {
+
+    size_t size = (size_t)t->rows * (size_t)(t->cols + 1) + 1;
+    char *out = malloc(size), *p = out;
+
+    if (!out)
+        return;
+
+    for (int y = 0; y < t->rows; y++) {
+
+        int end = t->cols;
+
+        while (end > 0 && at(t, end - 1, y)->ch == ' ')
+            end--;
+
+        for (int x = 0; x < end; x++)
+            *p++ = at(t, x, y)->ch ? at(t, x, y)->ch : ' ';
+
+        *p++ = '\n';
+    }
+
+    /* no empty lines at the end */
+    while (p > out && p[-1] == '\n' && (p - 1 == out || p[-2] == '\n'))
+        p--;
+
+    *p = 0;
+    clip_set_text(out);
+    free(out);
+}
+
+static void act_paste(void *ctx, int arg) { (void)arg; paste(((struct window *)ctx)->data); }
+static void act_copy(void *ctx, int arg) { (void)arg; copy_screen(((struct window *)ctx)->data); }
+static void act_new(void *ctx, int arg) { (void)ctx; (void)arg; open_terminal(); }
+
+static void act_clear(void *ctx, int arg) {
+
+    struct term *t = ((struct window *)ctx)->data;
+
+    (void)arg;
+    clear_cells(t, 0, t->rows * t->cols);
+    t->cx = t->cy = 0;
+    touch(t, 0, t->rows - 1);
+    send(t, "\n", 1);      /* the shell prints a fresh prompt */
+}
+
+static void term_click(struct window *win, int x, int y, int button, int dbl) {
+
+    (void)x; (void)y; (void)dbl;
+
+    if (button == 3) {          /* middle button: paste, like on Linux */
+
+        paste(win->data);
+        return;
+    }
+
+    if (button != 2)
+        return;
+
+    popup_begin(win);
+    popup_add("Copy all text", act_copy, 0, 1);
+    popup_add("Paste", act_paste, 0, clip_text() != NULL);
+    popup_line();
+    popup_add("Clear", act_clear, 0, 1);
+    popup_add("New Terminal", act_new, 0, 1);
+    popup_show();
+}
+
 static void term_key(struct window *win, struct event *ev) {
 
     struct term *t = win->data;
     int k = ev->key;
+
+    /* Ctrl+Shift+V paste, Ctrl+Shift+C copy (Ctrl+C stays "stop") */
+    if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_SHIFT) && (k == 'V' || k == 'v')) {
+
+        paste(t);
+        return;
+    }
+
+    if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_SHIFT) && (k == 'C' || k == 'c')) {
+
+        copy_screen(t);
+        return;
+    }
 
     switch (k) {
 
@@ -510,6 +601,8 @@ static void term_destroy(struct window *win) {
 
 /* ---------- starting the shell ---------- */
 
+static char start_dir[PATH_MAX];     /* "Open Terminal here" */
+
 static pid_t start_shell(int *master_out, int cols, int rows, const char *command) {
 
     int master = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
@@ -562,6 +655,9 @@ static pid_t start_shell(int *master_out, int cols, int rows, const char *comman
 
         setenv("TERM", "linux", 1);
 
+        if (start_dir[0] && chdir(start_dir) == 0)
+            setenv("PWD", start_dir, 1);
+
         char *shell = getenv("SHELL");
 
         if (!shell)
@@ -606,6 +702,7 @@ void open_terminal_run(const char *title, const char *command) {
     win->data = t;
     win->draw = term_draw;
     win->key = term_key;
+    win->click = term_click;
     win->fd = term_fd;
     win->readable = term_readable;
     win->resized = fit_to_window;
@@ -614,6 +711,7 @@ void open_terminal_run(const char *title, const char *command) {
     fit_to_window(win);
 
     t->pid = start_shell(&t->fd, t->cols, t->rows, command);
+    start_dir[0] = 0;
 
     if (t->pid < 0) {
 
@@ -626,5 +724,11 @@ void open_terminal_run(const char *title, const char *command) {
 
 void open_terminal(void) {
 
+    open_terminal_run(NULL, NULL);
+}
+
+void open_terminal_at(const char *dir) {
+
+    snprintf(start_dir, sizeof(start_dir), "%s", dir);
     open_terminal_run(NULL, NULL);
 }

@@ -141,6 +141,8 @@ struct window {
     int min_w, min_h;
     char title[64];
     int minimized;
+    int maximized;           /* fills the screen; saved_* is the old box */
+    int saved_x, saved_y, saved_w, saved_h;
     int want_close;          /* the app asks to be closed */
     void *data;              /* the app's own state */
 
@@ -169,6 +171,9 @@ int  wm_poll_fds(int *fds, struct window **owners, int max);
 void wm_cleanup(void);             /* close windows that want to close */
 void wm_close_all(void);
 int  wm_needs_redraw(void);
+int  wm_window_alive(struct window *win);   /* not closed yet? */
+void wm_toggle_maximize(struct window *win);
+void wm_set_wallpaper(int theme);  /* 0..3, saved for next time */
 extern int wm_quit;
 extern int wm_exit_code;
 
@@ -186,6 +191,33 @@ void icon_file(int x, int y, int s);
 void icon_monitor(int x, int y, int s);
 void icon_about(int x, int y, int s);
 void icon_disk(int x, int y, int s);
+void icon_network(int x, int y, int s, int connected);
+
+/* ---------- popup.c: right-click menus, clipboard, dialogs ---------- */
+
+void popup_begin(void *ctx);
+void popup_add(const char *label, void (*action)(void *ctx, int arg), int arg, int enabled);
+void popup_line(void);             /* a line before the next item */
+void popup_show(void);             /* at the mouse pointer */
+int  popup_is_open(void);
+void popup_close(void);
+void popup_draw(void);
+void popup_hover(void);
+int  popup_click(void);
+int  popup_key(struct event *ev);
+
+void clip_set_text(const char *text);
+const char *clip_text(void);
+void clip_set_files(const char *const *paths, int n, int cut);
+int  clip_files(char ***paths, int *cut);
+void clip_clear_files(void);
+
+/* answer: the text typed (ask) or the button pressed (confirm) */
+void dialog_ask(const char *title, const char *question, const char *initial, const char *button,
+                struct window *owner, void (*done)(void *ctx, const char *answer), void *ctx);
+void dialog_confirm(const char *title, const char *question, const char *button,
+                    struct window *owner, void (*done)(void *ctx, const char *answer), void *ctx);
+void dialog_info(const char *title, const char *text);
 
 /* ---------- apps ---------- */
 
@@ -197,6 +229,14 @@ void open_about(void);
 void open_disks(void);
 /* a Terminal that runs one command (shell -c) */
 void open_terminal_run(const char *title, const char *command);
+void open_terminal_at(const char *dir);
+void open_network(void);
+
+/* network.c: the network icon in the taskbar */
+int  net_watch_fd(void);
+void net_watch_read(void);
+int  net_connected(void);          /* 1 connected, 0 not, -1 no card */
+const char *net_summary(void);     /* "eth0 10.0.2.15" or why not */
 
 /* disks.c: USB sticks plugged in while the desktop runs */
 int  media_watch_fd(void);

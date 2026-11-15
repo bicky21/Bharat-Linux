@@ -27,3 +27,18 @@ ahci
 nvme
 mmc_block
 sdhci_pci
+# wired network cards: VMs (QEMU, VirtualBox, VMware) and common PCs
+e1000
+e1000e
+igb
+r8169
+pcnet32
+vmxnet3
+tg3
+alx
+atl1c
+# phones sharing their internet over USB (tethering)
+usbnet
+cdc_ether
+rndis_host
+cdc_ncm
