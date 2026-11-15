@@ -56,6 +56,12 @@ fi
 
 make -s all
 
+if [ ! -x rootfs/bin/mke2fs ] || [ ! -x rootfs/bin/e2fsck ] || [ ! -x rootfs/bin/mkfs.fat ]; then
+    echo "The disk formatting tools are missing (the installer needs them)."
+    echo "Build them with: make third-party   (see the message above)"
+    exit 1
+fi
+
 rm -rf "$B"
 mkdir -p "$B/boot-initrd" "$B/live" "$B/iso/boot/grub"
 

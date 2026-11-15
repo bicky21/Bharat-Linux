@@ -40,7 +40,11 @@ else
 fi
 
 JOBS=$(nproc 2>/dev/null || echo 2)
-CFLAGS="-Os -ffunction-sections -fdata-sections"
+# -std=gnu17 and the -Wno-error flags: GCC 14 and newer (Ubuntu 24.10+)
+# turn old C habits in these projects into errors; they are harmless here.
+CFLAGS="-Os -ffunction-sections -fdata-sections -std=gnu17 \
+ -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types \
+ -Wno-error=int-conversion -Wno-error=implicit-int"
 LDFLAGS="-static -Wl,--gc-sections -s"
 
 mkdir -p "$OUT" "$SRC"
@@ -71,6 +75,13 @@ if [ ! -x "$OUT/mke2fs" ] || [ ! -x "$OUT/e2fsck" ]; then
     say "building e2fsprogs (a few minutes, only once)"
     (
         cd "$SRC/e2fsprogs"
+        # start clean, so settings from an earlier failed try are not reused
+        git clean -qfdx
+        git checkout -q -- .
+        # e2fsprogs 1.47.1 calls my_llseek() in lib/blkid on a path that is
+        # never taken on 64-bit PCs, but does not define it with musl;
+        # GCC 14+ stops on that. Call plain lseek() there (64-bit anyway).
+        sed -i 's/result = my_llseek(fd, offset, whence);/result = lseek(fd, (off_t) offset, whence);/' lib/blkid/llseek.c
         [ -f Makefile ] || quiet ./configure CC="$CC" CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS" \
             --disable-nls --disable-fuse2fs --disable-defrag --disable-imager \
             --disable-debugfs --disable-e2initrd-helper --disable-uuidd \
