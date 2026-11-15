@@ -510,7 +510,7 @@ static void term_destroy(struct window *win) {
 
 /* ---------- starting the shell ---------- */
 
-static pid_t start_shell(int *master_out, int cols, int rows) {
+static pid_t start_shell(int *master_out, int cols, int rows, const char *command) {
 
     int master = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
 
@@ -567,7 +567,10 @@ static pid_t start_shell(int *master_out, int cols, int rows) {
         if (!shell)
             shell = "/bin/sh";
 
-        execl(shell, shell, NULL);
+        if (command)
+            execl(shell, shell, "-c", command, NULL);
+        else
+            execl(shell, shell, NULL);
 
         _exit(127);
     }
@@ -579,9 +582,9 @@ static pid_t start_shell(int *master_out, int cols, int rows) {
     return pid;
 }
 
-void open_terminal(void) {
+void open_terminal_run(const char *title, const char *command) {
 
-    struct window *win = wm_new_window("Terminal", 2 * PAD + 80 * CELL_W + 2,
+    struct window *win = wm_new_window(title ? title : "Terminal", 2 * PAD + 80 * CELL_W + 2,
                                        TITLE_H + 2 * PAD + 24 * CELL_H + 1);
 
     if (!win)
@@ -610,7 +613,7 @@ void open_terminal(void) {
 
     fit_to_window(win);
 
-    t->pid = start_shell(&t->fd, t->cols, t->rows);
+    t->pid = start_shell(&t->fd, t->cols, t->rows, command);
 
     if (t->pid < 0) {
 
@@ -619,4 +622,9 @@ void open_terminal(void) {
         for (const char *p = msg; *p; p++)
             put_char(t, *p);
     }
+}
+
+void open_terminal(void) {
+
+    open_terminal_run(NULL, NULL);
 }

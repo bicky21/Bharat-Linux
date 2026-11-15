@@ -5,3 +5,7 @@ psmouse
 hid
 usbhid
 hid_generic
+# USB 3 ports and USB sticks
+xhci_pci
+usb_storage
+uas

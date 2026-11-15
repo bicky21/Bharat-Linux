@@ -11,6 +11,7 @@
  *   wm.c     window manager: windows, taskbar, menu, desktop icons
  *   term.c   the Terminal app
  *   apps.c   Files, Text Viewer, System Monitor, About
+ *   disks.c  Disks, and opening USB sticks when they are plugged in
  *   main.c   start-up and the main loop
  */
 
@@ -184,6 +185,7 @@ void icon_folder(int x, int y, int s);
 void icon_file(int x, int y, int s);
 void icon_monitor(int x, int y, int s);
 void icon_about(int x, int y, int s);
+void icon_disk(int x, int y, int s);
 
 /* ---------- apps ---------- */
 
@@ -192,6 +194,15 @@ void open_files(const char *path);
 void open_viewer(const char *path);
 void open_monitor(void);
 void open_about(void);
+void open_disks(void);
+/* a Terminal that runs one command (shell -c) */
+void open_terminal_run(const char *title, const char *command);
+
+/* disks.c: USB sticks plugged in while the desktop runs */
+int  media_watch_fd(void);
+void media_watch_read(void);
+long long media_next(void);      /* ms until due, -1 none */
+void media_run(void);
 
 long long now_ms(void);
 

@@ -16,6 +16,7 @@
 #include <sys/utsname.h>
 
 #include "coreutils.h"
+#include "../libdisk.h"
 
 extern char **environ;
 
@@ -511,7 +512,11 @@ COMMAND(mount) {
 
     int flags[128] = {0};
     char *values[128] = {0};
-    int i = options(argc, argv, "to", "to", flags, values);
+    int i = options(argc, argv, "toa", "to", flags, values);
+
+    /* mount -a: everything in /etc/fstab */
+    if (flags['a'])
+        return mount_fstab(1, 0) ? 1 : 0;
 
     if (i >= argc) {
 
@@ -528,7 +533,18 @@ COMMAND(mount) {
     }
 
     if (argc - i != 2)
-        return fail("usage: mount [-t TYPE] [-o ro|rw|remount] DEVICE FOLDER");
+        return fail("usage: mount [-t TYPE] [-o ro|rw|remount] DEVICE FOLDER, or mount -a");
+
+    /* UUID=..., LABEL=... work like on other Linux systems */
+    char dev[256];
+
+    if (strchr(argv[i], '=') && argv[i][0] != '/') {
+
+        if (resolve_device(argv[i], dev, sizeof(dev)) != 0)
+            return fail("%s: no such disk part", argv[i]);
+
+        argv[i] = dev;
+    }
 
     unsigned long mflags = 0;
     char data[256] = "";
@@ -730,77 +746,6 @@ COMMAND(pgrep) {
 }
 
 /* ---------- hardware ---------- */
-
-static long long read_number(const char *path) {
-
-    FILE *f = fopen(path, "r");
-    long long v = 0;
-
-    if (f) {
-
-        if (fscanf(f, "%lld", &v) != 1)
-            v = 0;
-
-        fclose(f);
-    }
-
-    return v;
-}
-
-/* lsblk: disks and their parts, from /sys/block */
-COMMAND(lsblk) {
-
-    (void)argc;
-    (void)argv;
-
-    DIR *d = opendir("/sys/block");
-    struct dirent *e;
-
-    if (!d)
-        return fail("cannot read /sys/block");
-
-    printf("%-12s %8s %3s %s\n", "NAME", "SIZE", "RO", "TYPE");
-
-    while ((e = readdir(d)) != NULL) {
-
-        if (e->d_name[0] == '.' || strncmp(e->d_name, "loop", 4) == 0 || strncmp(e->d_name, "ram", 3) == 0)
-            continue;
-
-        char path[512], size[32];
-
-        snprintf(path, sizeof(path), "/sys/block/%s/size", e->d_name);
-        human(read_number(path) * 512, size, sizeof(size));
-        snprintf(path, sizeof(path), "/sys/block/%s/ro", e->d_name);
-
-        printf("%-12s %8s %3lld %s\n", e->d_name, size, read_number(path),
-               strncmp(e->d_name, "sr", 2) == 0 ? "rom" : "disk");
-
-        /* the parts (partitions) are folders like sda1 inside */
-        snprintf(path, sizeof(path), "/sys/block/%s", e->d_name);
-
-        DIR *p = opendir(path);
-        struct dirent *pe;
-
-        while (p && (pe = readdir(p)) != NULL) {
-
-            if (strncmp(pe->d_name, e->d_name, strlen(e->d_name)) != 0)
-                continue;
-
-            char part[768];
-
-            snprintf(part, sizeof(part), "/sys/block/%s/%s/size", e->d_name, pe->d_name);
-            human(read_number(part) * 512, size, sizeof(size));
-            printf("`-%-10s %8s %3d %s\n", pe->d_name, size, 0, "part");
-        }
-
-        if (p)
-            closedir(p);
-    }
-
-    closedir(d);
-
-    return 0;
-}
 
 COMMAND(lscpu) {
 

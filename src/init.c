@@ -4,10 +4,13 @@
  * The kernel starts this program first. Its jobs:
  *   1. mount the virtual filesystems (/proc, /sys, /dev, /run, /tmp)
  *   2. set the hostname
- *   3. start devd (drivers, device permissions) and the service manager
- *   4. keep a login running on the console: the graphical login screen
+ *   3. mount the extra disks listed in /etc/fstab and turn on zram
+ *      (compressed memory used as swap)
+ *   4. start devd (drivers, device permissions, USB sticks) and the
+ *      service manager
+ *   5. keep a login running on the console: the graphical login screen
  *      (greeter) when there is a graphics screen, else the text login
- *   5. collect ("reap") every finished process so no zombies pile up
+ *   6. collect ("reap") every finished process so no zombies pile up
  */
 
 #include <stdio.h>
@@ -22,6 +25,10 @@
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/swap.h>
+#include <sys/sysinfo.h>
+
+#include "libdisk.h"
 
 void mount_fs(const char *source,
               const char *target,
@@ -171,6 +178,81 @@ pid_t start_login() {
     return pid;
 }
 
+/* writes a short text into a /sys file */
+static int write_text(const char *path, const char *text) {
+
+    int fd = open(path, O_WRONLY | O_CLOEXEC);
+
+    if (fd < 0)
+        return -1;
+
+    int ok = write(fd, text, strlen(text)) == (ssize_t)strlen(text);
+
+    close(fd);
+
+    return ok ? 0 : -1;
+}
+
+/*
+ * zram: a swap area inside memory, compressed. Pages the system has not
+ * used for a while are squeezed to about a third of their size, so a
+ * small computer behaves as if it had more memory, without wearing out
+ * a USB stick or SSD. /etc/zram holds the size as a percentage of the
+ * memory (default 50); "0" turns it off.
+ */
+static void start_zram(void) {
+
+    int percent = 50;
+    FILE *f = fopen("/etc/zram", "r");
+
+    if (f) {
+
+        if (fscanf(f, "%d", &percent) != 1)
+            percent = 50;
+
+        fclose(f);
+    }
+
+    if (percent <= 0 || percent > 150)
+        return;
+
+    if (access("/sys/block/zram0", F_OK) != 0) {
+
+        char *argv[] = {"/bin/modprobe", "zram", NULL};
+
+        run_program(argv);
+    }
+
+    struct sysinfo si;
+    char size[32];
+
+    if (access("/sys/block/zram0/disksize", F_OK) != 0 || sysinfo(&si) != 0)
+        return;
+
+    snprintf(size, sizeof(size), "%llu",
+             (unsigned long long)si.totalram * si.mem_unit / 100 * (unsigned)percent);
+
+    /* zstd squeezes best; older kernels fall back to their default */
+    write_text("/sys/block/zram0/comp_algorithm", "zstd");
+
+    if (write_text("/sys/block/zram0/disksize", size) != 0)
+        return;
+
+    char *mk[] = {"/bin/mkswap", "-L", "zram", "/dev/zram0", NULL};
+    int quiet = open("/dev/null", O_WRONLY);
+    int saved = dup(STDOUT_FILENO);
+
+    /* mkswap prints a line; keep the boot screen clean */
+    dup2(quiet, STDOUT_FILENO);
+    run_program(mk);
+    dup2(saved, STDOUT_FILENO);
+    close(quiet);
+    close(saved);
+
+    /* priority 100: use the fast memory swap before any disk swap */
+    swapon("/dev/zram0", SWAP_FLAG_PREFER | (100 << SWAP_FLAG_PRIO_SHIFT));
+}
+
 void start_devd() {
 
     pid_t pid = fork();
@@ -214,7 +296,14 @@ int main() {
 
     setenv("PATH", "/bin:/usr/bin", 1);
 
+    /* the kernel loads some drivers by itself (file systems, crypto) */
+    write_text("/proc/sys/kernel/modprobe", "/bin/modprobe");
+
     set_hostname();
+
+    /* extra disks from /etc/fstab: a missing one never stops the boot */
+    mount_fstab(0, 1);
+    start_zram();
 
     start_devd();
     start_services();

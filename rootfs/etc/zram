@@ -1,0 +1,3 @@
+50
+# Compressed swap in memory (zram), as a percentage of the memory.
+# Makes small computers feel bigger. 0 turns it off.

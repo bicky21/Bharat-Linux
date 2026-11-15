@@ -54,4 +54,14 @@ grep -v '^#' tools/modules.list | while read -r name; do
     echo "  $name"
 done
 
+# other names of the copied drivers ("fs-iso9660" -> isofs), so the kernel
+# can load them by itself; only the lines for drivers we have
+if [ -f "$SRC/modules.alias" ]; then
+    find "$DST" -name '*.ko*' | sed 's|.*/||; s|\.ko.*||; s|-|_|g' | sort -u > "$DST/.names"
+    awk 'NR == FNR { have[$1] = 1; next }
+         $1 == "alias" { m = $3; gsub("-", "_", m); if (m in have) print }' \
+        "$DST/.names" "$SRC/modules.alias" > "$DST/modules.alias"
+    rm -f "$DST/.names"
+fi
+
 echo "Copied drivers for kernel $REL"

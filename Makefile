@@ -4,6 +4,7 @@
 #   make initramfs  pack rootfs/ into images/initramfs.cpio.gz (no sudo needed)
 #   make image      build the ext4 disk image images/bharat.img (no sudo needed)
 #   make modules    copy the drivers Bharat-linux needs from this PC
+#   make third-party  build the disk formatting tools (done by make)
 #   make clean      delete everything that was built
 #   make LIBC=glibc build with glibc even when musl is installed
 
@@ -52,14 +53,14 @@ DESKTOP_HDR := $(wildcard src/desktop/*.h)
 # folders the system needs at boot (git cannot store empty folders)
 DIRS := rootfs/bin rootfs/dev rootfs/proc rootfs/sys rootfs/run rootfs/tmp \
         rootfs/etc/tasks rootfs/var/log rootfs/var/lib/bpm rootfs/var/lib/bharat \
-        rootfs/packages \
+        rootfs/packages rootfs/media rootfs/mnt \
         images
 
 KERNEL_RELEASE := $(shell uname -r)
 
-.PHONY: all initramfs image modules clean
+.PHONY: all initramfs image modules clean third-party
 
-all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter
+all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter third-party
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
 
 $(DIRS):
@@ -100,6 +101,12 @@ rootfs/bin/greeter: $(GREETER_SRC) $(DESKTOP_HDR) $(HEADERS) | $(DIRS) $(EXTRA)
 rootfs/bin/desktop: $(DESKTOP_SRC) $(DESKTOP_HDR) | $(DIRS) $(EXTRA)
 	$(CC) $(CFLAGS) -O2 $(LDFLAGS) -o $@ $(DESKTOP_SRC) -lm
 
+# Formatting and checking disks use proven tools (e2fsprogs, dosfstools),
+# downloaded once from their official sources and checked against a fixed
+# fingerprint. See THIRD-PARTY.md. Without internet the rest still builds.
+third-party: | $(DIRS) $(EXTRA)
+	@./tools/third-party.sh || echo "WARNING: disk formatting tools not built (no internet?). Run: make third-party"
+
 # Kernel modules are skipped here: the network drivers are loaded from the
 # disk image instead, and leaving them out keeps this file small.
 # fakeroot lets the image record "owned by root" without needing sudo.
@@ -121,4 +128,4 @@ modules:
 clean:
 	rm -f rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter images/initramfs.cpio.gz images/bharat.img
 	rm -rf build/musl-include
-	cd rootfs/bin && rm -f coreutils $(CORE_NAMES) "["
+	cd rootfs/bin && rm -f coreutils $(CORE_NAMES) "[" mke2fs e2fsck mkfs.* fsck.*

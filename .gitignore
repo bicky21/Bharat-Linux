@@ -22,4 +22,8 @@ a.out
 
 # Files the running system creates
 /rootfs/home/*/.history
-/build/musl-include/
+
+
+# Downloaded and built by tools/third-party.sh
+/build/
+/rootfs/usr/share/licenses/

@@ -30,12 +30,15 @@ logo, then a graphical login screen, then the desktop.
 
 ## Build and run
 
-You need: `gcc`, `make`, `musl-tools`, `e2fsprogs`, `cpio`, `fakeroot`
-and `qemu-system-x86`. On Ubuntu:
+You need: `gcc`, `make`, `musl-tools`, `e2fsprogs`, `cpio`, `fakeroot`,
+`git`, `curl` and `qemu-system-x86`. On Ubuntu:
 
 ```sh
-sudo apt install build-essential musl-tools e2fsprogs cpio fakeroot qemu-system-x86
+sudo apt install build-essential musl-tools e2fsprogs cpio fakeroot git curl qemu-system-x86
 ```
+
+The first `make` also downloads and builds the disk formatting tools
+(about a minute, only once; see [THIRD-PARTY.md](THIRD-PARTY.md)).
 
 `musl-tools` is optional but recommended: with it, all programs together
 take about 3 MB instead of 46 MB (see "Light on resources" below).
@@ -64,6 +67,9 @@ Other ways to run:
 ./run.sh text              # boot inside the terminal (leave: Ctrl-A then X)
 make initramfs             # quick test image, no disk needed
 ./run.sh initramfs
+./run.sh disks=1           # with an extra empty 8 GB disk (try: sudo bharat-disk add)
+./run.sh usb               # with a USB stick plugged in (images/usb.img)
+./run.sh ram=1024          # with more memory (MB)
 ```
 
 ### Drivers
@@ -174,14 +180,57 @@ options people use most:
 |------|----------|
 | Files and folders | `ls -la`, `cp -r`, `mv`, `rm -r`, `mkdir -p`, `rmdir`, `touch`, `ln -s`, `stat`, `file`, `find . -name '*.c'`, `du -sh`, `df -h`, `chmod u+x`, `chown`, `chgrp`, `basename`, `dirname`, `realpath`, `readlink` |
 | Text | `cat -n`, `head`, `tail -f`, `wc -l`, `grep -rni`, `sort -nru`, `uniq -c`, `cut -d: -f1`, `tr a-z A-Z`, `tee`, `diff`, `cmp`, `less`, `more`, `nl`, `tac`, `rev`, `echo -e`, `printf`, `seq`, `xargs`, `yes` |
-| System | `pwd`, `uname -a`, `hostname`, `uptime`, `date +%H:%M`, `cal`, `free -h`, `nproc`, `lscpu`, `lsblk`, `lsmod`, `dmesg`, `mount`, `umount`, `sync`, `env`, `printenv`, `which`, `tty`, `clear`, `sleep` |
+| System | `pwd`, `uname -a`, `hostname`, `uptime`, `date +%H:%M`, `cal`, `free -h`, `nproc`, `lscpu`, `lsmod`, `dmesg`, `sync`, `env`, `printenv`, `which`, `tty`, `clear`, `sleep` |
+| Disks | `lsblk -f`, `blkid`, `mount -a`, `umount`, `eject`, `mkswap`, `swapon`, `swapoff`, `bdisk`, `bharat-disk`, `mkfs.ext4`, `mkfs.fat`, `fsck.ext4`, `fsck.fat` |
 | Processes | `ps`, `kill`, `killall`, `pkill`, `pidof`, `pgrep`, `top`, `jobs` |
 | Users | `sudo`, `passwd`, `useradd`, `userdel`, `usermod`, `id`, `groups`, `whoami` |
 | Scripts | `test` / `[ ]`, `true`, `false` |
 
-All 74 commands in `src/coreutils/` are one program of about 200 KB:
+All 80 commands in `src/coreutils/` are one program of about 200 KB:
 `/bin/ls`, `/bin/cp` ... are links to `/bin/coreutils`, which looks at the
 name it was started with.
+
+## Disks and USB sticks
+
+Like on other Linux systems, you can add disks and use USB sticks:
+
+- **USB sticks open by themselves.** Plug one in while you are logged in
+  to the desktop: it appears in `/media/YOUR-NAME/STICK-NAME` and a Files
+  window shows it. Remove it safely with the **Eject** button in **Disks**,
+  or `eject /media/ravi/PENDRIVE`. Nothing on a stick can run as a
+  program or gain extra rights (it is opened with `noexec,nosuid,nodev`),
+  and only the person at the desktop can see it.
+- **Adding a disk is guided:** open **Disks** and press **Add a disk...**,
+  or type `sudo bharat-disk add`. Choose the disk, give it a name, choose
+  Linux (ext4) or "also Windows/phones" (FAT32). Everything is shown in
+  plain words before anything is erased. The disk is then ready at
+  `/data/NAME` at every start.
+- **Full control** for those who want it:
+
+| Command | What it does |
+|---------|--------------|
+| `lsblk`, `lsblk -f` | disks, parts, file systems, where they are open |
+| `blkid` | label, UUID and type of every part |
+| `bdisk show sdb` | the parts of a disk and its free space |
+| `sudo bdisk new sdb` / `add sdb 20G` / `delete sdb 2` / `undo sdb` | GPT partitioning, with an undo |
+| `sudo mkfs.ext4 -L NAME /dev/sdb1`, `sudo mkfs.fat -F 32 /dev/sdb1` | format a part |
+| `sudo fsck.ext4 /dev/sdb1`, `sudo fsck.fat /dev/sdb1` | check and repair |
+| `sudo mount /dev/sdb1 /mnt`, `mount UUID=... /mnt`, `sudo mount -a` | open parts |
+| `/etc/fstab` | disks opened at every start (`nofail` = never blocks the start) |
+| `mkswap`, `swapon -s`, `swapoff`, `sudo bharat-disk swapfile 1G` | swap space |
+
+At start-up, the disks in `/etc/fstab` are checked (`e2fsck -p`) and
+opened. A missing or damaged disk never stops the computer from
+starting: it is skipped or opened read-only, with a message.
+
+**zram:** part of the memory is used as compressed swap (50 % by
+default, set in `/etc/zram`; 0 turns it off). Old pages are squeezed to a
+third of their size, so a 2 GB computer behaves as if it had more, with
+no wear on a USB stick or SSD.
+
+`bdisk` refuses to change a disk that is in use (including the one the
+system runs from), and keeps a copy of the previous table in
+`/var/lib/bharat/disk-backup/`, so `bdisk undo` can bring it back.
 
 ## Shell quick guide
 
@@ -276,7 +325,8 @@ administrator cannot be deleted.
    PC's kernel.
 5. **Graphical desktop** (first version done): next are a text editor,
    copy and paste, settings, and apps launched as separate programs.
-6. **Boot on real hardware**: bootloader, installer, ISO image.
-7. **Indian-language support**: Devanagari and other scripts in the desktop.
-8. **Long term**: an own kernel is a multi-year project; steps 1 to 7 give a
+6. **Disks** (done): partitioning, formatting, fstab, USB sticks, zram.
+7. **Boot on real hardware**: bootloader, installer, ISO image.
+8. **Indian-language support**: Devanagari and other scripts in the desktop.
+9. **Long term**: an own kernel is a multi-year project; steps 1 to 8 give a
    system that is useful and understood line by line before that.
