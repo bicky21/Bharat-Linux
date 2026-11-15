@@ -28,6 +28,9 @@ struct font font_ui   = {ui_widths,      ui_offsets,      ui_alpha,      UI_HEIG
 struct font font_bold = {ui_bold_widths, ui_bold_offsets, ui_bold_alpha, UI_BOLD_HEIGHT, UI_BOLD_ASCENT};
 struct font font_mono = {mono_widths,    mono_offsets,    mono_alpha,    MONO_HEIGHT,    MONO_ASCENT};
 struct font font_big  = {big_widths,     big_offsets,     big_alpha,     BIG_HEIGHT,     BIG_ASCENT};
+struct font font_italic = {italic_widths, italic_offsets, italic_alpha, ITALIC_HEIGHT, ITALIC_ASCENT};
+struct font font_h2   = {h2_widths,      h2_offsets,      h2_alpha,      H2_HEIGHT,      H2_ASCENT};
+struct font font_h3   = {h3_widths,      h3_offsets,      h3_alpha,      H3_HEIGHT,      H3_ASCENT};
 
 int screen_w, screen_h;
 

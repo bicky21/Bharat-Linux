@@ -4,6 +4,10 @@
 #
 #   e2fsprogs 1.47.1  mke2fs (mkfs.ext4) and e2fsck (fsck.ext4)
 #   dosfstools 4.2    mkfs.fat (mkfs.vfat) and fsck.fat (fsck.vfat)
+#   BearSSL 0.6       the encryption (TLS) of https, for the browser and wget
+#   stb_image 2.32    reading PNG, JPEG and GIF pictures in the browser
+#   CA certificates   the list of trusted authorities for https, copied
+#                     from this PC (the ca-certificates package, Mozilla's list)
 #
 # The source is downloaded once from the official projects and checked
 # against a fixed fingerprint (a git commit or a SHA-256 sum). If it does
@@ -27,6 +31,15 @@ E2FS_COMMIT=950a0d69c82b585aba30118f01bf80151deffe8c
 
 DOSFS_URL=https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz
 DOSFS_SHA256=64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527
+
+# BearSSL from Ubuntu's archive (Debian's copy of the 0.6 release, with
+# one non-free test file removed): bearssl.org itself is often unreachable
+BEARSSL_URL=http://archive.ubuntu.com/ubuntu/pool/universe/b/bearssl/bearssl_0.6+dfsg.1.orig.tar.xz
+BEARSSL_SHA256=102a625bd8f6155260867a50c508df8d8c3f796985dd744df1a68e5cd1a79004
+
+STB_COMMIT=9600522de53973336fa033a289858a4354cbb04c
+STB_URL=https://raw.githubusercontent.com/nothings/stb/$STB_COMMIT
+STB_SHA256=deb4f18c9ca21b751a1323019031c94c0bf5ca1d2929ef5913cc56f00aab6e91
 
 if [ "${1:-}" = "--clean" ]; then
     rm -rf "$OUT" "$SRC"
@@ -124,12 +137,64 @@ if [ ! -x "$OUT/mkfs.fat" ] || [ ! -x "$OUT/fsck.fat" ]; then
     cp "$SRC/dosfstools-4.2/COPYING" "$OUT/LICENSE-dosfstools.txt"
 fi
 
+# ---------- BearSSL (TLS for https) ----------
+if [ ! -f "$OUT/bearssl/libbearssl.a" ]; then
+
+    tarball="$SRC/bearssl-0.6.tar.xz"
+
+    if [ ! -f "$tarball" ]; then
+        say "downloading BearSSL 0.6"
+        curl -fsSL -o "$tarball.part" "$BEARSSL_URL"
+        mv "$tarball.part" "$tarball"
+    fi
+
+    if ! echo "$BEARSSL_SHA256  $tarball" | sha256sum -c - >/dev/null 2>&1; then
+        say "BearSSL download does not match its fingerprint. Stopping."
+        rm -f "$tarball"
+        exit 1
+    fi
+
+    say "building BearSSL"
+    rm -rf "$SRC/bearssl-0.6"
+    tar -xJf "$tarball" -C "$SRC"
+    quiet make -C "$SRC/bearssl-0.6" -j"$JOBS" CC="$CC" \
+        CFLAGS="-Os -fPIC -ffunction-sections -fdata-sections -std=gnu17" lib
+    mkdir -p "$OUT/bearssl"
+    cp -r "$SRC/bearssl-0.6/inc" "$OUT/bearssl/"
+    cp "$SRC/bearssl-0.6/build/libbearssl.a" "$OUT/bearssl/"
+    cp "$SRC/bearssl-0.6/LICENSE.txt" "$OUT/LICENSE-bearssl.txt"
+fi
+
+# ---------- stb_image (pictures) ----------
+if [ ! -f "$OUT/stb_image.h" ]; then
+
+    say "downloading stb_image"
+    curl -fsSL -o "$SRC/stb_image.h" "$STB_URL/stb_image.h"
+    curl -fsSL -o "$OUT/LICENSE-stb.txt" "$STB_URL/LICENSE"
+
+    if ! echo "$STB_SHA256  $SRC/stb_image.h" | sha256sum -c - >/dev/null 2>&1; then
+        say "stb_image download does not match its fingerprint. Stopping."
+        rm -f "$SRC/stb_image.h"
+        exit 1
+    fi
+
+    cp "$SRC/stb_image.h" "$OUT/stb_image.h"
+fi
+
+# ---------- trusted certificate authorities ----------
+mkdir -p rootfs/etc/ssl/certs
+if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+    cp /etc/ssl/certs/ca-certificates.crt rootfs/etc/ssl/certs/ca-certificates.crt
+else
+    say "no /etc/ssl/certs/ca-certificates.crt on this PC (sudo apt install ca-certificates): https will not work"
+fi
+
 # ---------- into the system ----------
 mkdir -p "$BIN" rootfs/usr/share/licenses
 for p in mke2fs e2fsck mkfs.fat fsck.fat; do
     cp "$OUT/$p" "$BIN/$p"
 done
-cp "$OUT"/LICENSE-*.txt rootfs/usr/share/licenses/
+cp "$OUT"/LICENSE-*.txt rootfs/usr/share/licenses/ 2>/dev/null || true
 
 cd "$BIN"
 for n in mkfs.ext4 mkfs.ext3 mkfs.ext2; do ln -sfn mke2fs "$n"; done

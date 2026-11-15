@@ -43,7 +43,7 @@ struct font {
     int ascent;
 };
 
-extern struct font font_ui, font_bold, font_mono, font_big;
+extern struct font font_ui, font_bold, font_mono, font_big, font_italic, font_h2, font_h3;
 
 extern int screen_w, screen_h;
 
@@ -151,6 +151,7 @@ struct window {
     void (*key)(struct window *win, struct event *ev);
     void (*click)(struct window *win, int x, int y, int button, int dbl);
     void (*wheel)(struct window *win, int value);
+    void (*hover)(struct window *win, int x, int y);   /* the mouse moved over it */
     void (*resized)(struct window *win);
     int  (*fd)(struct window *win);          /* a file to watch, or -1 */
     void (*readable)(struct window *win);    /* that file has data */
@@ -192,6 +193,7 @@ void icon_monitor(int x, int y, int s);
 void icon_about(int x, int y, int s);
 void icon_disk(int x, int y, int s);
 void icon_network(int x, int y, int s, int connected);
+void icon_browser(int x, int y, int s);
 
 /* ---------- popup.c: right-click menus, clipboard, dialogs ---------- */
 
@@ -231,6 +233,7 @@ void open_disks(void);
 void open_terminal_run(const char *title, const char *command);
 void open_terminal_at(const char *dir);
 void open_network(void);
+void open_browser(const char *url);    /* NULL: the start page */
 
 /* network.c: the network icon in the taskbar */
 int  net_watch_fd(void);

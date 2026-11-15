@@ -59,9 +59,9 @@ DIRS := rootfs/bin rootfs/dev rootfs/proc rootfs/sys rootfs/run rootfs/tmp \
 
 KERNEL_RELEASE := $(shell uname -r)
 
-.PHONY: all initramfs image modules clean third-party iso
+.PHONY: all initramfs image modules clean third-party iso net-programs
 
-all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter third-party
+all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter third-party net-programs
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
 
 $(DIRS):
@@ -106,7 +106,18 @@ rootfs/bin/desktop: $(DESKTOP_SRC) $(DESKTOP_HDR) | $(DIRS) $(EXTRA)
 # downloaded once from their official sources and checked against a fixed
 # fingerprint. See THIRD-PARTY.md. Without internet the rest still builds.
 third-party: | $(DIRS) $(EXTRA)
-	@./tools/third-party.sh || echo "WARNING: disk formatting tools not built (no internet?). Run: make third-party"
+	@./tools/third-party.sh || echo "WARNING: disk tools / BearSSL not built (no internet?). Run: make third-party"
+
+# Programs that speak https use BearSSL (built by third-party above).
+TLS := build/third-party
+NET_PROGRAMS := rootfs/bin/wget rootfs/bin/bharat-fetch
+
+$(NET_PROGRAMS): rootfs/bin/%: src/net/%.c src/libhttp.h $(TLS)/bearssl/libbearssl.a | $(DIRS) $(EXTRA)
+	$(CC) $(CFLAGS) -isystem $(TLS)/bearssl/inc -isystem $(TLS) $(LDFLAGS) -o $@ $< $(TLS)/bearssl/libbearssl.a -lm
+
+net-programs: third-party
+	@if [ -f $(TLS)/bearssl/libbearssl.a ]; then $(MAKE) -s $(NET_PROGRAMS); \
+	 else echo "WARNING: wget and the browser's fetcher need BearSSL: run make third-party"; fi
 
 # Kernel modules are skipped here: the network drivers are loaded from the
 # disk image instead, and leaving them out keeps this file small.
@@ -131,6 +142,6 @@ modules:
 	./tools/copy-modules.sh
 
 clean:
-	rm -f rootfs/init $(BINARIES) rootfs/bin/desktop rootfs/bin/greeter images/initramfs.cpio.gz images/bharat.img
+	rm -f rootfs/init $(BINARIES) $(NET_PROGRAMS) rootfs/bin/desktop rootfs/bin/greeter images/initramfs.cpio.gz images/bharat.img
 	rm -rf build/musl-include
 	cd rootfs/bin && rm -f coreutils $(CORE_NAMES) "[" mke2fs e2fsck mkfs.* fsck.*
