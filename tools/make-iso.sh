@@ -108,10 +108,13 @@ done
 (cd "$BI" && find . -print | fakeroot cpio -o -H newc 2>/dev/null | gzip -9 > ../boot-initrd.gz)
 
 # ---------- 2. the EFI file of the installed system ----------
-echo "2/4 EFI file (kernel + bootstrap + command line)"
+# docs/splash.bmp: the Bharat Linux logo, shown by the EFI file as soon as
+# it starts (it replaces the firmware's logo, e.g. TianoCore in QEMU)
+echo "2/4 EFI file (kernel + bootstrap + command line + logo)"
 echo "$PLACEHOLDER rw quiet loglevel=3 fbcon=nodefer vt.global_cursor_default=0" > "$B/cmdline"
 ukify build --linux="$B/vmlinuz" --initrd="$B/boot-initrd.gz" --cmdline="@$B/cmdline" \
-    --os-release="@rootfs/etc/os-release" --stub="$STUB" --output="$B/bharat.efi" >/dev/null
+    --os-release="@rootfs/etc/os-release" --splash=docs/splash.bmp \
+    --stub="$STUB" --output="$B/bharat.efi" >/dev/null
 
 grep -q "$PLACEHOLDER" "$B/bharat.efi" || { echo "The EFI file has no command line to fill in"; exit 1; }
 
