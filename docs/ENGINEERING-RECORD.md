@@ -445,6 +445,57 @@ build machine with a local server and a test certificate authority
 (accepted with it, refused without it). Real internet sites could not
 be reached from the test machine.
 
+### Stage 14: Tor Browser instead of our own browser (PR #20)
+
+**Problem.** The owner asked to remove Bharat Browser and use only Tor.
+Asked to choose, he picked the **real Tor Browser** over adding Tor to
+our own browser. Tor Browser is Firefox: it needs the X11 display
+system, GTK and glibc, none of which Bharat Linux uses (our desktop
+draws straight onto the screen and our programs are static musl).
+
+**Approach.** Keep Bharat Linux as it is, and give Tor Browser its own
+world only while it runs, like switching to another screen:
+
+1. The desktop's **Tor Browser** icon ends the desktop with a special
+   code (`EXIT_TOR`).
+2. The login screen (root) starts `x11-session` for that user and waits.
+3. `x11-session` starts an X server with a fixed configuration (no udev:
+   `/dev/fb0` and every `/dev/input/event*`), a random secret (X
+   cookie), no network listening; then our tiny window manager
+   `bharat-xwm`; then Tor Browser as the user.
+4. When Tor Browser closes, X stops and the desktop starts again.
+
+Tor Browser and everything it needs is the optional "Tor pack", made by
+`tools/torbrowser.sh` (`make torbrowser`): Tor Browser checked with the
+Tor Project's OpenPGP key, its updater switched off by a policy, Xorg
+and its drivers, and all the libraries, copied from the building PC.
+
+Each user gets `/var/lib/tor-browser/USER`, made by root: the program as
+**hard links** to `/opt/tor-browser` (no extra space; the user cannot
+change it), a writable copy of `TorBrowser/Data` for their settings and
+Tor's state, and a private HOME.
+
+**Problems and fixes.**
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| torproject.org cannot be reached from the test machine | network rules | tested with a fake "Tor Browser" (a GTK program) signed by a test key; the real one is checked on the owner's PC |
+| a tampered file must never be used | security | the build only accepts a VALIDSIG by the Tor Browser Developers key; tested: a changed file is refused |
+| the X server stopped at once | `libz.so.1` came from `/usr/local/lib` on the build PC, which the program loader does not search | all libraries are copied into `/usr/lib/x86_64-linux-gnu` |
+| GTK crashed: "Unrecognized image file format" | GTK finds picture types with the file-type database | copy the compiled part of `/usr/share/mime` |
+| GTK windows stayed empty | the window manager forced a size smaller than the window's minimum, and GTK waited for its size | never smaller than the minimum |
+| how to close it without title bars | no title bars on purpose | Alt+F4 in `bharat-xwm`, plus Quit / Ctrl+Q in Tor Browser |
+| hard links refused for normal users | Linux protects links to other people's files | root makes the user's folder |
+| Firefox needs `/dev/shm` | shared memory between its processes | `init` mounts it |
+| a user could aim root at other files | symbolic-link tricks in their own folders | root works only in `/var/lib/tor-browser`, refuses links (`O_NOFOLLOW`), and never writes in the user's home |
+
+**Tested in QEMU** (2 GB memory): the signature check (good accepted,
+changed refused), start from the desktop icon, the program full screen
+with a working mouse and keyboard, Alt+F4 back to the desktop, a second
+start (reusing the user's folder), and the "not installed" message
+without the pack. Bharat Browser, `bharat-fetch` and stb_image were
+removed; `wget` with https stays.
+
 ---
 
 ## 4. How we work and test
@@ -489,7 +540,7 @@ progress.
 Agreed as the next stage. Planned topics: kernel and system hardening,
 a firewall, disk encryption, a read-only and verified system, A/B
 updates, sandboxing of apps, an amnesic ("forget everything") mode, and
-anonymous internet through Tor with a small browser.
+anonymous internet through Tor (Tor Browser is in, stage 14).
 
 Decisions waiting for the owner:
 
@@ -497,8 +548,7 @@ Decisions waiting for the owner:
 2. Default protection level (suggested: Everyday)?
 3. "Forget everything at power off": default for installed systems, or
    a choice in the boot menu?
-4. Browser: our own small browser through Tor first, Tor Browser later
-   as an optional "Privacy Pack"?
+4. Browser: decided, the official Tor Browser as an optional pack.
 5. `rm` moving files to a Trash, or a separate `del` command?
 6. First Indian languages (suggested: Hindi and Bengali)?
 7. OK to use proven open-source parts for Tor and encryption?
@@ -528,3 +578,4 @@ Decisions waiting for the owner:
 | #17 | 15 Nov | Engineering record from the beginning |
 | #18 | 15 Nov | Network service and commands; right-click menus, clipboard, maximise |
 | #19 | 15 Nov | Bharat Browser: our own web browser (https via BearSSL) |
+| #20 | 15 Nov | Tor Browser (official, signature checked) replaces Bharat Browser |

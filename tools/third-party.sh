@@ -4,8 +4,7 @@
 #
 #   e2fsprogs 1.47.1  mke2fs (mkfs.ext4) and e2fsck (fsck.ext4)
 #   dosfstools 4.2    mkfs.fat (mkfs.vfat) and fsck.fat (fsck.vfat)
-#   BearSSL 0.6       the encryption (TLS) of https, for the browser and wget
-#   stb_image 2.32    reading PNG, JPEG and GIF pictures in the browser
+#   BearSSL 0.6       the encryption (TLS) of https, for wget
 #   CA certificates   the list of trusted authorities for https, copied
 #                     from this PC (the ca-certificates package, Mozilla's list)
 #
@@ -36,10 +35,6 @@ DOSFS_SHA256=64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527
 # one non-free test file removed): bearssl.org itself is often unreachable
 BEARSSL_URL=http://archive.ubuntu.com/ubuntu/pool/universe/b/bearssl/bearssl_0.6+dfsg.1.orig.tar.xz
 BEARSSL_SHA256=102a625bd8f6155260867a50c508df8d8c3f796985dd744df1a68e5cd1a79004
-
-STB_COMMIT=9600522de53973336fa033a289858a4354cbb04c
-STB_URL=https://raw.githubusercontent.com/nothings/stb/$STB_COMMIT
-STB_SHA256=deb4f18c9ca21b751a1323019031c94c0bf5ca1d2929ef5913cc56f00aab6e91
 
 if [ "${1:-}" = "--clean" ]; then
     rm -rf "$OUT" "$SRC"
@@ -163,22 +158,6 @@ if [ ! -f "$OUT/bearssl/libbearssl.a" ]; then
     cp -r "$SRC/bearssl-0.6/inc" "$OUT/bearssl/"
     cp "$SRC/bearssl-0.6/build/libbearssl.a" "$OUT/bearssl/"
     cp "$SRC/bearssl-0.6/LICENSE.txt" "$OUT/LICENSE-bearssl.txt"
-fi
-
-# ---------- stb_image (pictures) ----------
-if [ ! -f "$OUT/stb_image.h" ]; then
-
-    say "downloading stb_image"
-    curl -fsSL -o "$SRC/stb_image.h" "$STB_URL/stb_image.h"
-    curl -fsSL -o "$OUT/LICENSE-stb.txt" "$STB_URL/LICENSE"
-
-    if ! echo "$STB_SHA256  $SRC/stb_image.h" | sha256sum -c - >/dev/null 2>&1; then
-        say "stb_image download does not match its fingerprint. Stopping."
-        rm -f "$SRC/stb_image.h"
-        exit 1
-    fi
-
-    cp "$SRC/stb_image.h" "$OUT/stb_image.h"
 fi
 
 # ---------- trusted certificate authorities ----------

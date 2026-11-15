@@ -249,31 +249,39 @@ Realtek cards, and for phones sharing their internet over USB.
 - Fixed settings instead of DHCP: `/etc/network.conf`.
 - Not yet: Wi-Fi (needs firmware and a Wi-Fi security program).
 
-## Bharat Browser
+## Tor Browser
 
-Our own web browser, written from scratch (desktop icon **Browser**):
+The desktop icon **Tor Browser** opens the Tor Project's own **Tor
+Browser**: every page goes through the Tor network, so websites and your
+internet provider cannot see who you are or what you visit.
 
-- **Tabs**, back/forward, reload/stop, a start page, **bookmarks** (`+*`
-  or Ctrl+D), **history** (`about:history`), find in page (Ctrl+F),
-  page source (Ctrl+U).
-- The address bar also **searches** (DuckDuckGo's HTML version).
-- Reads HTML: headings, paragraphs, links, lists, tables, code,
-  quotes, centred text, **pictures** (PNG, JPEG, GIF), and **forms**
-  (text fields, passwords, check boxes, choices, buttons; GET and POST).
-- **https** with certificate checks; cookies for the session.
-- **Downloads** (PDF, ZIP ...) go to `~/Downloads`.
-- Right-click: open links in a new tab, copy link or page address,
-  download links, open or save pictures, bookmark, find, source.
-- **Safer by design:** no JavaScript is run, and everything that touches
-  the internet (network, encryption, pictures) runs in a separate helper
-  program, `bharat-fetch`: a bad page or picture cannot crash the
-  desktop.
+Tor Browser is not written by us (it is Firefox with Tor, and needs the
+X11 display system, GTK and glibc), so it is an **optional add-on** of
+about 400 MB:
 
-Not yet: JavaScript (sites like YouTube or Gmail need it), style sheets
-(CSS), Indian scripts in pages (shown as `?` until the fonts come),
-private mode through Tor (planned with the security work).
+```sh
+sudo apt install xserver-xorg-core xserver-xorg-video-fbdev xserver-xorg-input-evdev \
+    xauth x11-xkb-utils xkb-data libx11-dev libgtk-3-0 libdbus-glib-1-2 gnupg curl xz-utils
+make torbrowser          # downloads it and checks the Tor Project's signature
+./rebuild.sh && ./run.sh ram=2048       # or: make iso
+```
 
-`wget` also downloads `https://` addresses now.
+- The download is refused if the Tor Project's signature is not right.
+- Already downloaded? `make torbrowser TB=~/Downloads/tor-browser-linux-x86_64-VERSION.tar.xz`
+  (the `.asc` signature file must be next to it).
+- **Updating:** run `make torbrowser` again. Tor Browser's own updater is
+  switched off, like on Tails, so nothing changes behind your back.
+- **How it runs:** the desktop closes, Tor Browser fills the whole screen
+  (its own X11 screen, which only it can use and which never listens on
+  the network), and the desktop comes back when you close it:
+  **menu > Quit**, **Ctrl+Q** or **Alt+F4**.
+- Each user has their own Tor Browser settings in
+  `/var/lib/tor-browser/USER`. On the live USB this is in memory and
+  forgotten at power off.
+- Needs **2 GB of memory** or more (VirtualBox: set 2048 MB or more).
+- Remove it again: `make clean-torbrowser`.
+
+`wget` downloads `https://` addresses too.
 
 ## Right-click and the clipboard
 

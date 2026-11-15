@@ -6,9 +6,12 @@ set -e
 
 cd "$(dirname "$0")"
 
-SIZE_MB="${SIZE_MB:-256}"
-
 make
+
+# 256 MB, or more when rootfs/ is big (for example with Tor Browser)
+NEED_MB=$(( $(du -sm rootfs | cut -f1) * 3 / 2 + 64 ))
+[ "$NEED_MB" -lt 256 ] && NEED_MB=256
+SIZE_MB="${SIZE_MB:-$NEED_MB}"
 
 # drivers (mouse, disks, USB) come from this PC; copy them again when
 # tools/modules.list has changed since the last copy

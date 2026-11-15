@@ -59,7 +59,7 @@ DIRS := rootfs/bin rootfs/dev rootfs/proc rootfs/sys rootfs/run rootfs/tmp \
 
 KERNEL_RELEASE := $(shell uname -r)
 
-.PHONY: all initramfs image modules clean third-party iso net-programs
+.PHONY: all initramfs image modules clean third-party iso net-programs torbrowser clean-torbrowser
 
 all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter third-party net-programs
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
@@ -110,14 +110,27 @@ third-party: | $(DIRS) $(EXTRA)
 
 # Programs that speak https use BearSSL (built by third-party above).
 TLS := build/third-party
-NET_PROGRAMS := rootfs/bin/wget rootfs/bin/bharat-fetch
+NET_PROGRAMS := rootfs/bin/wget
 
 $(NET_PROGRAMS): rootfs/bin/%: src/net/%.c src/libhttp.h $(TLS)/bearssl/libbearssl.a | $(DIRS) $(EXTRA)
 	$(CC) $(CFLAGS) -isystem $(TLS)/bearssl/inc -isystem $(TLS) $(LDFLAGS) -o $@ $< $(TLS)/bearssl/libbearssl.a -lm
 
 net-programs: third-party
 	@if [ -f $(TLS)/bearssl/libbearssl.a ]; then $(MAKE) -s $(NET_PROGRAMS); \
-	 else echo "WARNING: wget and the browser's fetcher need BearSSL: run make third-party"; fi
+	 else echo "WARNING: wget needs BearSSL: run make third-party"; fi
+
+# Tor Browser (the Tor Project's own, signature checked) with the X11
+# display system it needs. Optional and big (about 400 MB). See
+# tools/torbrowser.sh; TB=FILE uses a file you already downloaded.
+TOR_PACK := rootfs/opt rootfs/lib/$(MULTIARCH) rootfs/lib64 rootfs/usr/lib rootfs/usr/bin \
+            rootfs/usr/share/X11 rootfs/usr/share/icons rootfs/usr/share/glib-2.0 rootfs/usr/share/mime \
+            rootfs/var/lib/xkb rootfs/etc/nsswitch.conf rootfs/usr/local
+
+torbrowser: all
+	TB="$(TB)" ./tools/torbrowser.sh
+
+clean-torbrowser:
+	rm -rf $(TOR_PACK)
 
 # Kernel modules are skipped here: the network drivers are loaded from the
 # disk image instead, and leaving them out keeps this file small.

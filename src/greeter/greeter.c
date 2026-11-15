@@ -705,7 +705,39 @@ static void power(int code) {
     snprintf(message, sizeof(message), "Could not power off.");
 }
 
-static void after_session(int code) {
+/* Tor Browser runs in its own X11 screen; then the desktop comes back */
+static int run_tor_browser(struct bharat_user *user) {
+
+    show_message_screen("Starting Tor Browser");
+    input_release();
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        execl("/bin/x11-session", "x11-session", user->name, NULL);
+        _exit(127);
+    }
+
+    int st;
+
+    if (pid > 0)
+        waitpid(pid, &st, 0);
+
+    input_take();
+
+    return pid > 0 && WIFEXITED(st) ? WEXITSTATUS(st) : 127;
+}
+
+static void after_session(int code, struct bharat_user *user) {
+
+    while (code == EXIT_TOR) {
+
+        if (run_tor_browser(user) != 0)
+            snprintf(message, sizeof(message), "Tor Browser could not start (see /run/x11/Xorg.log).");
+
+        code = run_session(user);
+    }
 
     if (code == EXIT_POWEROFF || code == EXIT_REBOOT)
         power(code);
@@ -752,7 +784,7 @@ static void login_as(struct bharat_user *user) {
     message[0] = 0;
     save_last_user(user->name);
     session_ran = 1;
-    after_session(run_session(user));
+    after_session(run_session(user), user);
 }
 
 static void try_login(void) {
@@ -1305,7 +1337,7 @@ int main(void) {
         if (find_user(autologin, 0, &user)) {
 
             session_ran = 1;
-            after_session(run_session(&user));
+            after_session(run_session(&user), &user);
         }
         else
             snprintf(message, sizeof(message), "Automatic login: no user %s.", autologin);
