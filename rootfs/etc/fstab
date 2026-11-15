@@ -1,0 +1,10 @@
+# /etc/fstab: disks opened at every start.
+#
+# WHAT           WHERE         TYPE   OPTIONS                  DUMP CHECK
+# UUID=1234-...  /data/backup  ext4   defaults,nosuid,nofail   0    2
+#
+# WHAT can be UUID=..., LABEL=..., PARTUUID=..., PARTLABEL=... or /dev/sdb1
+# (see them with: blkid). "nofail" means a missing disk never stops the
+# computer from starting. CHECK 2 checks the disk for errors first.
+#
+# Easiest way to add a disk: sudo bharat-disk add

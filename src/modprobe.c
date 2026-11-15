@@ -9,6 +9,7 @@
 
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <fnmatch.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -177,6 +178,9 @@ static int find_file(const char *dir, const char *want, char *out, size_t size) 
     return found;
 }
 
+static int quiet;              /* -q: no message when not found */
+static int depth;              /* aliases that point to aliases */
+
 static int load(const char *wanted) {
 
     char name[256];
@@ -242,6 +246,43 @@ static int load(const char *wanted) {
     if (find_file(base, name, found, sizeof(found)))
         return load_file(found);
 
+    /*
+     * Another name for a module: the kernel asks for "fs-iso9660" when
+     * an ISO is mounted, or "crypto-zstd". modules.alias maps them.
+     */
+    snprintf(path, sizeof(path), "%s/modules.alias", base);
+    f = fopen(path, "r");
+
+    if (f && depth < 3) {
+
+        char line[512], pattern[400], module[128];
+
+        while (fgets(line, sizeof(line), f)) {
+
+            if (sscanf(line, "alias %399s %127s", pattern, module) != 2)
+                continue;
+
+            char np[400];
+
+            normalize(pattern, np, sizeof(np));
+
+            if (fnmatch(np, name, 0) == 0) {
+
+                fclose(f);
+                depth++;
+                int r = load(module);
+                depth--;
+                return r;
+            }
+        }
+    }
+
+    if (f)
+        fclose(f);
+
+    if (quiet)
+        return 1;
+
     fprintf(stderr, "modprobe: module %s not found in %s\n", wanted, base);
 
     return 1;
@@ -262,8 +303,14 @@ int main(int argc, char *argv[]) {
 
     int failed = 0;
 
-    for (int i = 1; i < argc; i++)
+    /* the kernel runs "modprobe -q -- NAME" by itself when it needs a driver */
+    for (int i = 1; i < argc; i++) {
+
+        if (!strcmp(argv[i], "-q")) { quiet = 1; continue; }
+        if (!strcmp(argv[i], "--")) continue;
+
         failed |= load(argv[i]);
+    }
 
     return failed;
 }

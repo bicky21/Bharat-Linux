@@ -544,6 +544,19 @@ static int run_session(struct bharat_user *user) {
         /* not fatal */
     }
 
+    /*
+     * devd opens USB sticks for the person sitting at the computer:
+     * tell it who that is (it watches this file).
+     */
+    FILE *who = fopen("/run/session-user.new", "w");
+
+    if (who) {
+
+        fprintf(who, "%s\n", user->name);
+        fclose(who);
+        rename("/run/session-user.new", "/run/session-user");
+    }
+
     pid_t pid = fork();
 
     if (pid == 0) {
@@ -572,6 +585,9 @@ static int run_session(struct bharat_user *user) {
     if (fchown(STDIN_FILENO, 0, 0) != 0) {
         /* not fatal */
     }
+
+    /* logged out: devd closes this user's USB sticks */
+    unlink("/run/session-user");
 
     /* the desktop gave the screen back: it is ours again */
     console_graphics(1);

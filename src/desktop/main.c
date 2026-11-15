@@ -157,7 +157,7 @@ int main(void) {
         struct window *owners[MAX_FDS];
 
         int ni = input_fds(input, MAX_FDS / 2);
-        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2 - 1);
+        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2 - 2);
 
         for (int i = 0; i < ni; i++)
             pfd[i] = (struct pollfd){.fd = input[i], .events = POLLIN};
@@ -168,18 +168,23 @@ int main(void) {
         int watch = ni + nw;
 
         pfd[watch] = (struct pollfd){.fd = input_watch_fd(), .events = POLLIN};
+        pfd[watch + 1] = (struct pollfd){.fd = media_watch_fd(), .events = POLLIN};
 
         /* a System Monitor opened since we last looked needs seconds */
         if (wm_wants_seconds() && next_tick > now_ms() + 1000)
             next_tick = now_ms() + 1000;
 
         long long wait = next_tick - now_ms();
+        long long media = media_next();
+
+        if (media >= 0 && media < wait)
+            wait = media;
 
         if (wait < 0)
             wait = 0;
 
         /* sleep until something happens; no busy waiting */
-        int ready = poll(pfd, watch + 1, (int)wait);
+        int ready = poll(pfd, watch + 2, (int)wait);
 
         if (ready < 0 && errno != EINTR)
             break;
@@ -205,6 +210,12 @@ int main(void) {
         /* a mouse plugged in (or allowed) later is picked up here */
         if (ready > 0 && (pfd[watch].revents & POLLIN))
             input_watch_read();
+
+        /* a USB stick was plugged in: show it */
+        if (ready > 0 && (pfd[watch + 1].revents & POLLIN))
+            media_watch_read();
+
+        media_run();
 
         wm_cleanup();
 

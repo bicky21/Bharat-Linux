@@ -408,6 +408,15 @@ void icon_about(int x, int y, int s) {
     fill(x + s / 2 - s / 14, y + s / 2 - 2, s / 7, s / 3, C_WHITE);
 }
 
+void icon_disk(int x, int y, int s) {
+
+    /* a hard disk seen from the front, with a green light */
+    fill_round(x + s / 16, y + s / 4, s - s / 8, s / 2, s / 10, 0x57606A);
+    fill_round(x + s / 8, y + s / 4 + s / 10, s - s / 4, s / 2 - s / 5, s / 14, 0x8C959F);
+    fill_circle(x + s - s / 4, y + s / 2 + s / 8, s / 16 + 1, 0x56D364);
+    fill(x + s / 5, y + s / 2 + s / 10, s / 3, 2, 0xD0D7DE);
+}
+
 /* ---------- desktop icons and the start menu entries ---------- */
 
 struct launcher {
@@ -428,6 +437,7 @@ static struct launcher launchers[] = {
     {"Terminal",       "Terminal",     icon_terminal, open_terminal},
     {"Files",          "Files",        icon_folder,   open_home_files},
     {"System Monitor", "Monitor",      icon_monitor,  open_monitor},
+    {"Disks",          "Disks",        icon_disk,     open_disks},
     {"About Bharat",   "About Bharat", icon_about,    open_about},
 };
 

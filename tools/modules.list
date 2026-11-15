@@ -9,3 +9,16 @@ hid_generic
 8139cp
 e1000
 virtio_net
+# USB sticks and disks
+xhci_pci
+usb_storage
+uas
+# file systems found on USB sticks and CDs
+isofs
+exfat
+ntfs3
+nls_utf8
+nls_iso8859-1
+# compressed memory used as swap
+zram
+zstd
