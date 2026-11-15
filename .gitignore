@@ -24,3 +24,17 @@ a.out
 /build/
 /rootfs/usr/share/licenses/
 /rootfs/etc/ssl/certs/ca-certificates.crt
+
+# The Tor pack, made by tools/torbrowser.sh (make torbrowser)
+/rootfs/opt/
+/rootfs/lib/x86_64-linux-gnu/
+/rootfs/lib64/
+/rootfs/usr/lib/
+/rootfs/usr/bin/
+/rootfs/usr/share/X11/
+/rootfs/usr/share/icons/
+/rootfs/usr/share/glib-2.0/
+/rootfs/var/lib/xkb/
+/rootfs/etc/nsswitch.conf
+/rootfs/usr/local/
+/rootfs/usr/share/mime/

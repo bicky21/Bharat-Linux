@@ -22,10 +22,6 @@ FONTS = [
     ("ui_bold", "DejaVuSans-Bold.ttf",   13, None),
     ("mono",    "DejaVuSansMono.ttf",    13, 8),
     ("big",     "DejaVuSans-Bold.ttf",   26, None),
-    # for web pages in the browser
-    ("italic",  "DejaVuSans-Oblique.ttf", 13, None),
-    ("h2",      "DejaVuSans-Bold.ttf",   19, None),
-    ("h3",      "DejaVuSans-Bold.ttf",   15, None),
 ]
 
 out = []

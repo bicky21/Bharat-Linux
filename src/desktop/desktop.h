@@ -43,7 +43,7 @@ struct font {
     int ascent;
 };
 
-extern struct font font_ui, font_bold, font_mono, font_big, font_italic, font_h2, font_h3;
+extern struct font font_ui, font_bold, font_mono, font_big;
 
 extern int screen_w, screen_h;
 
@@ -182,6 +182,7 @@ extern int wm_exit_code;
 #define EXIT_LOGOUT   0
 #define EXIT_POWEROFF 10
 #define EXIT_REBOOT   11
+#define EXIT_TOR      12     /* start Tor Browser, then come back */
 
 void content_box(struct window *win, int *x, int *y, int *w, int *h);
 
@@ -193,7 +194,7 @@ void icon_monitor(int x, int y, int s);
 void icon_about(int x, int y, int s);
 void icon_disk(int x, int y, int s);
 void icon_network(int x, int y, int s, int connected);
-void icon_browser(int x, int y, int s);
+void icon_tor(int x, int y, int s);
 
 /* ---------- popup.c: right-click menus, clipboard, dialogs ---------- */
 
@@ -233,7 +234,7 @@ void open_disks(void);
 void open_terminal_run(const char *title, const char *command);
 void open_terminal_at(const char *dir);
 void open_network(void);
-void open_browser(const char *url);    /* NULL: the start page */
+void open_tor_browser(void);           /* asks the login screen to start it */
 
 /* network.c: the network icon in the taskbar */
 int  net_watch_fd(void);

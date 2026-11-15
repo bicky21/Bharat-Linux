@@ -315,6 +315,9 @@ int main() {
     mount_fs("tmpfs", "/run", "tmpfs", "mode=0755");
     mount_fs("tmpfs", "/tmp", "tmpfs", "mode=1777");
 
+    /* shared memory between the parts of a program (Tor Browser needs it) */
+    mount_fs("tmpfs", "/dev/shm", "tmpfs", "mode=1777,nosuid,nodev");
+
     setenv("PATH", "/bin:/usr/bin", 1);
 
     /* the kernel loads some drivers by itself (file systems, crypto) */

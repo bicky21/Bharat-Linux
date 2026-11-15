@@ -483,39 +483,16 @@ struct launcher {
     void (*open)(void);
 };
 
-void icon_browser(int x, int y, int s) {
+void icon_tor(int x, int y, int s) {
 
-    /* a globe: a blue circle with lines of longitude and latitude */
-    int r = s / 2 - 1, cx = x + s / 2, cy = y + s / 2;
+    /* an onion: purple rings, the sign of Tor */
+    int cx = x + s / 2, cy = y + s / 2 + s / 12, r = s / 2 - 2;
+    uint32_t ring[] = {0x7D4698, 0xFFFFFF, 0x9A68B5, 0xFFFFFF, 0x59316B};
 
-    fill_circle(cx, cy, r, 0x0969DA);
-    fill_circle(cx, cy, r - 2, 0x54AEFF);
+    for (int i = 0; i < 5; i++)
+        fill_circle(cx, cy, r - i * r / 5, ring[i]);
 
-    for (int k = -1; k <= 1; k++)
-        fill(cx - r + 3, cy + k * r / 2, 2 * r - 6, 1, 0xFFFFFF);
-
-    fill(cx, cy - r + 2, 1, 2 * r - 4, 0xFFFFFF);
-
-    for (int i = -r + 3; i < r - 3; i++) {
-
-        int dx = (int)(r * 0.45 * sqrt(1.0 - (double)i * i / ((double)r * r)));
-
-        put_pixel(cx - dx, cy + i, 0xFFFFFF, 255);
-        put_pixel(cx + dx, cy + i, 0xFFFFFF, 255);
-    }
-
-    /* a saffron ring: our browser */
-    for (int a = 0; a < 360; a += 2) {
-
-        double t = a * 3.14159265 / 180;
-
-        put_pixel(cx + (int)(r * cos(t)), cy + (int)(r * sin(t)), C_SAFFRON, 255);
-    }
-}
-
-static void open_start_page(void) {
-
-    open_browser(NULL);
+    fill(cx - 1, y + 1, 3, s / 6, 0x56D364);       /* the green top */
 }
 
 static void icon_network_launcher(int x, int y, int s) {
@@ -533,7 +510,7 @@ static void open_home_files(void) {
 static struct launcher launchers[] = {
     {"Terminal",       "Terminal",     icon_terminal, open_terminal},
     {"Files",          "Files",        icon_folder,   open_home_files},
-    {"Bharat Browser", "Browser",      icon_browser,  open_start_page},
+    {"Tor Browser",    "Tor Browser",  icon_tor,      open_tor_browser},
     {"System Monitor", "Monitor",      icon_monitor,  open_monitor},
     {"Disks",          "Disks",        icon_disk,     open_disks},
     {"Network",        "Network",      icon_network_launcher, open_network},
@@ -978,6 +955,24 @@ static void launch(int i) {
     wm_redraw();
 }
 
+/*
+ * Tor Browser is the Tor Project's own program, which needs the X11
+ * display system. The desktop closes, the login screen starts it full
+ * screen (x11-session), and the desktop comes back when it closes.
+ */
+void open_tor_browser(void) {
+
+    if (access("/opt/tor-browser/Browser", F_OK) != 0 || access("/usr/lib/xorg/Xorg", X_OK) != 0) {
+
+        dialog_info("Tor Browser",
+                    "Not installed. Add it with: make torbrowser");
+        return;
+    }
+
+    wm_exit_code = EXIT_TOR;
+    wm_quit = 1;
+}
+
 static struct window *window_at(int px, int py) {
 
     for (int i = nwin - 1; i >= 0; i--) {
@@ -1029,7 +1024,7 @@ static void desktop_menu(void) {
     popup_begin(NULL);
     popup_add("Open Terminal", act_launch, 0, 1);
     popup_add("Files", act_launch, 1, 1);
-    popup_add("Bharat Browser", act_launch, 2, 1);
+    popup_add("Tor Browser", act_launch, 2, 1);
     popup_add("Network", act_launch, LAUNCHERS - 2, 1);
     popup_add("Disks", act_launch, 4, 1);
     popup_add("System Monitor", act_launch, 3, 1);
