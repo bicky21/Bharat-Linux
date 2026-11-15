@@ -49,12 +49,18 @@ if [ ! -e "$KERNEL" ]; then
     exit 1
 fi
 
-if [ ! -d "rootfs/lib/modules/$REL" ]; then
+# copy the drivers again when tools/modules.list has changed (for example
+# the disk drivers ahci and nvme, needed to find a disk to install on)
+if ! cmp -s tools/modules.list "rootfs/lib/modules/$REL/.modules.list"; then
     echo "Copying the drivers for kernel $REL"
     KERNEL_RELEASE="$REL" ./tools/copy-modules.sh
 fi
 
 make -s all
+
+if ! grep -q "/ahci\.ko" "rootfs/lib/modules/$REL/modules.dep" 2>/dev/null; then
+    echo "Warning: the SATA disk driver (ahci) was not copied: the installer may find no disk."
+fi
 
 if [ ! -x rootfs/bin/mke2fs ] || [ ! -x rootfs/bin/e2fsck ] || [ ! -x rootfs/bin/mkfs.fat ]; then
     echo "The disk formatting tools are missing (the installer needs them)."

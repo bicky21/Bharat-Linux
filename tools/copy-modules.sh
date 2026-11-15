@@ -64,4 +64,8 @@ if [ -f "$SRC/modules.alias" ]; then
     rm -f "$DST/.names"
 fi
 
+# remember which list was used: rebuild.sh and make-iso.sh copy again
+# when tools/modules.list changes (new drivers after a git pull)
+cp tools/modules.list "$DST/.modules.list"
+
 echo "Copied drivers for kernel $REL"
