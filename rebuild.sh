@@ -10,8 +10,10 @@ SIZE_MB="${SIZE_MB:-256}"
 
 make
 
-# the mouse needs drivers from this PC; copy them once
-if [ ! -d "rootfs/lib/modules/${KERNEL_RELEASE:-$(uname -r)}" ]; then
+# drivers (mouse, disks, USB) come from this PC; copy them again when
+# tools/modules.list has changed since the last copy
+MODS="rootfs/lib/modules/${KERNEL_RELEASE:-$(uname -r)}"
+if ! cmp -s tools/modules.list "$MODS/.modules.list"; then
     ./tools/copy-modules.sh ||
         echo "Warning: no drivers copied, the mouse will not work in the desktop"
 fi
