@@ -168,7 +168,7 @@ static inline int rewrite_file(const char *path, mode_t mode,
                                int (*edit)(char *line, void *ctx), void *ctx,
                                const char *extra) {
 
-    char tmp[256];
+    char tmp[4200];
 
     snprintf(tmp, sizeof(tmp), "%s.new", path);
 

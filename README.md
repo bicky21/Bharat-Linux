@@ -72,6 +72,48 @@ make initramfs             # quick test image, no disk needed
 ./run.sh ram=1024          # with more memory (MB)
 ```
 
+### Live USB stick, ISO, and installing
+
+Build a live image that starts from a USB stick or DVD, on old (BIOS)
+and new (UEFI) PCs:
+
+```sh
+sudo apt install grub-pc-bin grub-efi-amd64-bin grub-common xorriso mtools \
+                 systemd-boot-efi systemd-ukify openssl ovmf
+make iso                   # builds images/bharat-live.iso (about 45 MB)
+./run.sh iso               # a virtual UEFI PC with an empty 20 GB disk
+```
+
+The welcome screen offers two choices:
+
+- **Try Bharat Linux**: the whole system runs in memory. Nothing on the
+  computer is changed, and nothing is kept when you switch off. (Text
+  mode user: `live`, password `live`.)
+- **Install Bharat Linux**: three steps (which disk, your account,
+  check) and a progress bar. Everything is shown in plain words before
+  anything is erased. In text mode: `sudo bharat-install`.
+
+After installing, close QEMU and start the installed system:
+
+```sh
+./run.sh installed
+```
+
+On a real USB stick (this ERASES the stick; check the name with `lsblk`!):
+
+```sh
+sudo dd if=images/bharat-live.iso of=/dev/sdX bs=4M status=progress conv=fsync
+```
+
+How the installed system starts: the disk gets an EFI part (256 MB) and
+the system part (ext4). The EFI part holds one file, `BOOTX64.EFI`: the
+kernel, a tiny start-up program (`bootstrap`: loads the disk drivers,
+checks the disk, opens it) and the command line, in one file. Every UEFI
+PC starts it by itself; the installer also adds "Bharat Linux" to the
+PC's boot menu. No boot loader to configure or break. The installed
+system needs a UEFI PC (all PCs since about 2012) with Secure Boot
+switched off (for now).
+
 ### Drivers
 
 The mouse and network drivers must match the kernel that boots, so they
@@ -312,6 +354,9 @@ administrator cannot be deleted.
 - The desktop has no copy and paste, no scroll-back in the Terminal, and
   no Indian-language text yet.
 - The desktop needs a graphics screen: it does not work with `./run.sh text`.
+- The installer erases the whole chosen disk: installing next to Windows
+  (dual boot) is not offered yet. Installed systems need UEFI with Secure
+  Boot off. The ISO uses the kernel of the PC that built it.
 
 ## Roadmap to an indigenous OS
 
@@ -326,7 +371,8 @@ administrator cannot be deleted.
 5. **Graphical desktop** (first version done): next are a text editor,
    copy and paste, settings, and apps launched as separate programs.
 6. **Disks** (done): partitioning, formatting, fstab, USB sticks, zram.
-7. **Boot on real hardware**: bootloader, installer, ISO image.
+7. **Boot on real hardware** (done): live ISO for USB sticks and DVDs
+   (BIOS and UEFI), graphical and text installer, UEFI start-up.
 8. **Indian-language support**: Devanagari and other scripts in the desktop.
 9. **Long term**: an own kernel is a multi-year project; steps 1 to 8 give a
    system that is useful and understood line by line before that.

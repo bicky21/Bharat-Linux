@@ -22,3 +22,8 @@ nls_iso8859-1
 # compressed memory used as swap
 zram
 zstd
+# disks a system can be installed on (loaded by the bootstrap at start)
+ahci
+nvme
+mmc_block
+sdhci_pci

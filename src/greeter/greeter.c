@@ -14,6 +14,7 @@
  * 3 = no graphics screen (init falls back to the text login).
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,7 @@
 
 #include "../desktop/desktop.h"
 #include "../libaccount.h"
+#include "../libinstall.h"
 
 #define BG_TOP    0x04060B          /* the logo's own background colour */
 #define BG_BOTTOM 0x0E1B30
@@ -347,6 +349,8 @@ static void glide_to_login(void) {
 struct box { int x, y, w, h; };
 
 #define MAX_FIELDS 4
+#define MAX_CHOICES 8
+#define MAX_LINES 6
 
 struct form {
     const char *title;
@@ -359,6 +363,16 @@ struct form {
     int secret[MAX_FIELDS];
     int big_logo;                   /* the full logo above the card */
     void (*submit)(void);
+
+    /* used by the live system and the installer */
+    const char *back;               /* a second button, or NULL */
+    void (*go_back)(void);
+    int width;                      /* of the card (0: 360) */
+    int line_count;                 /* plain text lines */
+    const char *lines[MAX_LINES];
+    int choices;                    /* rows to choose from */
+    const char *choice[MAX_CHOICES];
+    int chosen;
 };
 
 static struct form *form;          /* the form on the screen now */
@@ -369,32 +383,75 @@ static int inside_box(struct box b) {
     return inside(mouse_x, mouse_y, b.x, b.y, b.w, b.h);
 }
 
+/* where the parts of the card start, from the top of the card */
+static int lines_y(void)   { return form->subtitle ? 76 : 52; }
+static int choices_y(void) { return lines_y() + form->line_count * 22 + (form->line_count ? 10 : 0); }
+static int fields_y(void)  {
+
+    /* fields have their label above them: room for it after lines or choices */
+    return choices_y() + form->choices * 50 + (form->choices || form->line_count ? 20 : 6);
+}
+
+static int card_h(void) {
+
+    if (form->count == 0)
+        return choices_y() + form->choices * 50 + 10 + 38 + 20;
+
+    return fields_y() + form->count * 60 + 50;
+}
+
 static int form_top(void) {
 
-    return form->big_logo && logo && screen_h >= 700 ? 30 + logo->h : 140;
+    if (form->big_logo && logo && screen_h >= 700)
+        return 30 + logo->h;
+
+    /* tall cards (the installer) start higher */
+    int top = (screen_h - card_h()) / 2;
+
+    return top > 140 ? 140 : (top < 110 ? 110 : top);
 }
 
 static struct box card_box(void) {
 
-    int w = 360;
-    int fields_y = (form->subtitle ? 82 : 58);
-    int h = fields_y + form->count * 60 + 18 + 38 + 20 - 26;
+    int w = form->width ? form->width : 360;
 
-    return (struct box){(screen_w - w) / 2, form_top(), w, h};
+    return (struct box){(screen_w - w) / 2, form_top(), w, card_h()};
 }
 
 static struct box field_box(int i) {
 
     struct box c = card_box();
 
-    return (struct box){c.x + 20, c.y + (form->subtitle ? 82 : 58) + i * 60, c.w - 40, 34};
+    return (struct box){c.x + 20, c.y + fields_y() + i * 60, c.w - 40, 34};
+}
+
+static struct box choice_box(int i) {
+
+    struct box c = card_box();
+
+    return (struct box){c.x + 20, c.y + choices_y() + i * 50, c.w - 40, 42};
 }
 
 static struct box submit_box(void) {
 
-    struct box last = field_box(form->count - 1);
+    struct box c = card_box();
+    struct box b = {c.x + 20, c.y + c.h - 38 - 20, c.w - 40, 38};
 
-    return (struct box){last.x, last.y + last.h + 18, last.w, 38};
+    /* with a Back button: Back on the left, the main button on the right */
+    if (form->back) {
+
+        b.w = (b.w - 12) * 3 / 5;
+        b.x = c.x + c.w - 20 - b.w;
+    }
+
+    return b;
+}
+
+static struct box back_box(void) {
+
+    struct box c = card_box(), s = submit_box();
+
+    return (struct box){c.x + 20, s.y, s.x - c.x - 32, 38};
 }
 
 /* the buttons along the bottom of the screen */
@@ -478,6 +535,25 @@ static void draw_login(void) {
     if (form->subtitle)
         text(&font_ui, c.x + 20, c.y + 36, form->subtitle, 0x8B949E);
 
+    for (int i = 0; i < form->line_count; i++)
+        text(&font_ui, c.x + 20, c.y + lines_y() + i * 22, form->lines[i] + (form->lines[i][0] == '!'),
+             form->lines[i][0] == '!' ? 0xFFA657 : 0xC9D1D9);
+
+    for (int i = 0; i < form->choices; i++) {
+
+        struct box b = choice_box(i);
+        int on = i == form->chosen;
+
+        fill_round(b.x, b.y, b.w, b.h, 8, on ? C_SAFFRON : FIELD_LINE);
+        fill_round(b.x + 2, b.y + 2, b.w - 4, b.h - 4, 7, on ? 0x2A1E10 : FIELD);
+        fill_circle(b.x + 22, b.y + b.h / 2, 7, on ? C_SAFFRON : FIELD_LINE);
+
+        if (!on)
+            fill_circle(b.x + 22, b.y + b.h / 2, 5, FIELD);
+
+        text(on ? &font_bold : &font_ui, b.x + 40, b.y + (b.h - font_ui.height) / 2, form->choice[i], C_WHITE);
+    }
+
     for (int i = 0; i < form->count; i++) {
 
         struct box b = field_box(i);
@@ -485,6 +561,9 @@ static void draw_login(void) {
         text(&font_ui, b.x, b.y - 20, form->labels[i], 0x8B949E);
         field(b, form->values[i], form->secret[i], focus == i);
     }
+
+    if (form->back)
+        button(back_box(), form->back, 0x1F2937, 0xC9D1D9);
 
     button(submit_box(), form->button, C_SAFFRON, 0x1A1205);
 
@@ -704,12 +783,12 @@ static void try_login(void) {
 }
 
 static struct form login_form = {
-    "Sign in", NULL, "Log in", 2,
-    {"User name", "Password"},
-    {username, password},
-    {sizeof(username), sizeof(password)},
-    {0, 1},
-    1, try_login
+    .title = "Sign in", .button = "Log in", .count = 2,
+    .labels = {"User name", "Password"},
+    .values = {username, password},
+    .sizes = {sizeof(username), sizeof(password)},
+    .secret = {0, 1},
+    .big_logo = 1, .submit = try_login
 };
 
 /* ---------- first start-up: create the administrator account ---------- */
@@ -745,14 +824,292 @@ static void create_account(void) {
 }
 
 static struct form setup_form = {
-    "Welcome! Create your account",
-    "It can manage this computer (administrator).",
-    "Create account", 4,
-    {"User name (small letters)", "Password (8 or more characters)", "Repeat the password", "Computer name"},
-    {new_name, new_pass, new_repeat, new_host},
-    {sizeof(new_name), sizeof(new_pass), sizeof(new_repeat), sizeof(new_host)},
-    {0, 1, 1, 0},
-    0, create_account
+    .title = "Welcome! Create your account",
+    .subtitle = "It can manage this computer (administrator).",
+    .button = "Create account", .count = 4,
+    .labels = {"User name (small letters)", "Password (8 or more characters)", "Repeat the password", "Computer name"},
+    .values = {new_name, new_pass, new_repeat, new_host},
+    .sizes = {sizeof(new_name), sizeof(new_pass), sizeof(new_repeat), sizeof(new_host)},
+    .secret = {0, 1, 1, 0},
+    .submit = create_account
+};
+
+/* ---------- the live system: try it, or install it ---------- */
+
+static struct form welcome_form, disk_form, account_form, summary_form, done_form;
+static struct install_disk disks[MAX_CHOICES];
+static int disk_count;
+static char summary[4][200];
+
+static void show(struct form *f) {
+
+    form = f;
+    focus = 0;
+}
+
+/* "Try": the live user, no password (changes are lost at power off) */
+static void try_live(void) {
+
+    struct bharat_user user;
+
+    if (!find_user("live", 0, &user)) {
+
+        snprintf(message, sizeof(message), "The live user is missing.");
+        return;
+    }
+
+    show(&welcome_form);
+    login_as(&user);
+}
+
+static void welcome_next(void) {
+
+    if (welcome_form.chosen == 0) {
+
+        try_live();
+        return;
+    }
+
+    disk_count = install_disks(disks, MAX_CHOICES);
+    disk_form.choices = disk_count;
+    disk_form.chosen = 0;
+
+    for (int i = 0; i < disk_count; i++)
+        disk_form.choice[i] = disks[i].description;
+
+    disk_form.line_count = 1;
+    disk_form.lines[0] = disk_count ? "!EVERYTHING on the chosen disk will be erased."
+                                    : "!No disk of 2 GB or more was found.";
+    show(&disk_form);
+}
+
+static void back_to_welcome(void) { show(&welcome_form); }
+
+static void disk_next(void) {
+
+    if (disk_count == 0) {
+
+        snprintf(message, sizeof(message), "Attach a disk, then press Back and try again.");
+        return;
+    }
+
+    show(&account_form);
+}
+
+static void back_to_disks(void) { show(&disk_form); }
+
+static void account_next(void) {
+
+    const char *err = NULL;
+
+    if (!valid_username(new_name))
+        err = "User name: small letters and digits, starting with a letter.";
+    else if (strcmp(new_pass, new_repeat))
+        err = "The two passwords are different.";
+    else if ((err = weak_password(new_pass, new_name)) != NULL)
+        ;
+    else if (!new_host[0])
+        err = "Please give the computer a name.";
+
+    if (err) {
+
+        snprintf(message, sizeof(message), "%s", err);
+        return;
+    }
+
+    struct install_disk *d = &disks[disk_form.chosen];
+
+    snprintf(summary[0], sizeof(summary[0]), "Disk:  %s", d->description);
+    snprintf(summary[1], sizeof(summary[1]), "Account:  %s (administrator)", new_name);
+    snprintf(summary[2], sizeof(summary[2]), "Computer name:  %s", new_host);
+
+    summary_form.lines[0] = summary[0];
+    summary_form.lines[1] = "!EVERYTHING on this disk will be erased.";
+    summary_form.lines[2] = summary[1];
+    summary_form.lines[3] = summary[2];
+    summary_form.lines[4] = started_in_uefi_mode()
+        ? "It will start by itself (UEFI) when you switch on."
+        : "!Started in old BIOS mode: switch the PC to UEFI to start it.";
+    summary_form.line_count = 5;
+    show(&summary_form);
+}
+
+static void back_to_account(void) { show(&account_form); }
+
+/* the progress screen while the child process installs */
+static void draw_progress(const char *step, int percent) {
+
+    gfx_area(0, 0, screen_w, screen_h);
+    gradient(0, 0, screen_w, screen_h, BG_TOP, BG_BOTTOM);
+
+    if (logo)
+        draw_image(logo, logo_x(), logo_y());
+
+    int y = logo ? logo_y() + logo->h + 30 : screen_h / 2;
+    int w = 420, x = (screen_w - w) / 2;
+
+    center_text(&font_bold, y, "Installing Bharat Linux", C_WHITE);
+    fill_round(x, y + 36, w, 14, 7, FIELD_LINE);
+
+    if (percent > 0)
+        fill_round(x, y + 36, w * percent / 100 < 14 ? 14 : w * percent / 100, 14, 7, C_SAFFRON);
+
+    center_text(&font_ui, y + 62, step, 0x8B949E);
+    center_text(&font_ui, y + 100, "Please do not switch off the computer.", 0x6E7781);
+    gfx_flush();
+}
+
+static int progress_fd = -1;
+
+static void report_progress(const char *step, int percent) {
+
+    char line[128];
+    int n = snprintf(line, sizeof(line), "%d %s\n", percent, step);
+
+    if (write(progress_fd, line, (size_t)n) < 0) {
+        /* the screen is just not updated */
+    }
+}
+
+static void install_now(void) {
+
+    int p[2];
+
+    if (pipe(p) != 0)
+        return;
+
+    draw_progress("Starting", 0);
+
+    pid_t pid = fork();
+
+    if (pid == 0) {
+
+        close(p[0]);
+        progress_fd = p[1];
+
+        char details[200] = "";
+        const char *err = install_system(disks[disk_form.chosen].name,
+                                         new_name, new_pass, new_host, report_progress,
+                                         details, sizeof(details));
+        char line[400];
+        int n = err ? snprintf(line, sizeof(line), "fail %s %s\n", err, details)
+                    : snprintf(line, sizeof(line), "done\n");
+
+        if (write(p[1], line, (size_t)n) < 0) {
+            /* the parent sees the pipe close */
+        }
+
+        _exit(err ? 1 : 0);
+    }
+
+    close(p[1]);
+
+    char buf[512], step[128] = "Starting";
+    size_t have = 0;
+    int ok = 0;
+
+    while (pid > 0) {
+
+        ssize_t n = read(p[0], buf + have, sizeof(buf) - have - 1);
+
+        if (n <= 0)
+            break;
+
+        have += (size_t)n;
+        buf[have] = 0;
+
+        char *nl;
+
+        while ((nl = strchr(buf, '\n')) != NULL) {
+
+            *nl = 0;
+
+            int percent;
+
+            if (!strcmp(buf, "done"))
+                ok = 1;
+            else if (!strncmp(buf, "fail ", 5))
+                snprintf(message, sizeof(message), "%.120s", buf + 5);
+            else if (sscanf(buf, "%d %127[^\n]", &percent, step) == 2)
+                draw_progress(step, percent);
+
+            have -= (size_t)(nl + 1 - buf);
+            memmove(buf, nl + 1, have + 1);
+        }
+    }
+
+    close(p[0]);
+
+    if (pid > 0)
+        waitpid(pid, NULL, 0);
+
+    memset(new_pass, 0, sizeof(new_pass));
+    memset(new_repeat, 0, sizeof(new_repeat));
+
+    if (ok) {
+
+        message[0] = 0;
+        show(&done_form);
+    }
+    else {
+
+        if (!message[0])
+            snprintf(message, sizeof(message), "The installation stopped unexpectedly.");
+
+        show(&summary_form);
+    }
+}
+
+static void restart_now(void) { power(EXIT_REBOOT); }
+
+static struct form welcome_form = {
+    .title = "Welcome to Bharat Linux",
+    .subtitle = "Started from the USB stick or DVD.",
+    .button = "Continue", .width = 460,
+    .line_count = 3,
+    .lines = {"Try it: nothing on this computer is changed, and",
+              "nothing is kept when you switch off.",
+              "Install it: it goes onto a disk of this computer."},
+    .choices = 2,
+    .choice = {"Try Bharat Linux", "Install Bharat Linux"},
+    .submit = welcome_next
+};
+
+static struct form disk_form = {
+    .title = "Install - step 1 of 3",
+    .subtitle = "Where should Bharat Linux go?",
+    .button = "Next", .width = 520,
+    .back = "Back", .go_back = back_to_welcome,
+    .submit = disk_next
+};
+
+static struct form account_form = {
+    .title = "Install - step 2 of 3",
+    .subtitle = "Your account. It can manage this computer.",
+    .button = "Next", .count = 4, .width = 420,
+    .labels = {"User name (small letters)", "Password (8 or more characters)", "Repeat the password", "Computer name"},
+    .values = {new_name, new_pass, new_repeat, new_host},
+    .sizes = {sizeof(new_name), sizeof(new_pass), sizeof(new_repeat), sizeof(new_host)},
+    .secret = {0, 1, 1, 0},
+    .back = "Back", .go_back = back_to_disks,
+    .submit = account_next
+};
+
+static struct form summary_form = {
+    .title = "Install - step 3 of 3",
+    .subtitle = "Please check, then install.",
+    .button = "Install now", .width = 560,
+    .back = "Back", .go_back = back_to_account,
+    .submit = install_now
+};
+
+static struct form done_form = {
+    .title = "Bharat Linux is installed",
+    .button = "Restart now", .width = 460,
+    .line_count = 2,
+    .lines = {"Remove the USB stick or DVD,", "then restart the computer."},
+    .back = "Keep trying", .go_back = try_live,
+    .submit = restart_now
 };
 
 static void leave_to_text_mode(void) {
@@ -773,6 +1130,21 @@ static void key_press(struct event *ev) {
     /* Ctrl+Alt+F2: the text console, like on other Linux systems */
     if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_ALT) && ev->key == K_F2)
         leave_to_text_mode();
+
+    /* a form with only choices: arrows choose, Enter goes on */
+    if (form->count == 0) {
+
+        if (ev->key == K_DOWN || ev->key == '\t')
+            form->chosen = form->choices ? (form->chosen + 1) % form->choices : 0;
+        else if (ev->key == K_UP)
+            form->chosen = form->choices ? (form->chosen + form->choices - 1) % form->choices : 0;
+        else if (ev->key == '\r')
+            form->submit();
+        else if (ev->key == 27 && form->go_back)
+            form->go_back();
+
+        return;
+    }
 
     char *value = form->values[focus];
     size_t size = form->sizes[focus];
@@ -813,6 +1185,22 @@ static void key_press(struct event *ev) {
 }
 
 static void click(void) {
+
+    for (int i = 0; i < form->choices; i++) {
+
+        if (inside_box(choice_box(i))) {
+
+            form->chosen = i;
+            return;
+        }
+    }
+
+    if (form->back && inside_box(back_box())) {
+
+        message[0] = 0;
+        form->go_back();
+        return;
+    }
 
     for (int i = 0; i < form->count; i++) {
 
@@ -887,8 +1275,15 @@ int main(void) {
     form = &login_form;
     focus = username[0] ? 1 : 0;
 
+    /* the live system: try it, or install it */
+    if (is_live_system()) {
+
+        form = &welcome_form;
+        focus = 0;
+        autologin[0] = 0;
+    }
     /* first start-up: nobody can log in yet, so create the account */
-    if (first_boot()) {
+    else if (first_boot()) {
 
         form = &setup_form;
         focus = 0;

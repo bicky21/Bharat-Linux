@@ -5,6 +5,7 @@
 #   make image      build the ext4 disk image images/bharat.img (no sudo needed)
 #   make modules    copy the drivers Bharat-linux needs from this PC
 #   make third-party  build the disk formatting tools (done by make)
+#   make iso        build images/bharat-live.iso (try and install; see tools/make-iso.sh)
 #   make clean      delete everything that was built
 #   make LIBC=glibc build with glibc even when musl is installed
 
@@ -58,7 +59,7 @@ DIRS := rootfs/bin rootfs/dev rootfs/proc rootfs/sys rootfs/run rootfs/tmp \
 
 KERNEL_RELEASE := $(shell uname -r)
 
-.PHONY: all initramfs image modules clean third-party
+.PHONY: all initramfs image modules clean third-party iso
 
 all: $(DIRS) $(EXTRA) rootfs/init $(BINARIES) rootfs/bin/coreutils rootfs/bin/desktop rootfs/bin/greeter third-party
 	@echo "Built with $(LIBC). Size of /bin: $$(du -sh rootfs/bin | cut -f1)"
@@ -118,6 +119,10 @@ initramfs: all
 
 image: all
 	./rebuild.sh
+
+# a live DVD / USB stick image that installs onto a disk
+iso:
+	./tools/make-iso.sh
 
 # Copies the few drivers Bharat-linux needs (mouse, network cards) from
 # this PC. They must match the kernel that boots, and run.sh boots this
