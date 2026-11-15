@@ -15,6 +15,8 @@
 #include <sys/sysinfo.h>
 #include <sys/utsname.h>
 
+#include <ifaddrs.h>
+#include <arpa/inet.h>
 #include "coreutils.h"
 #include "../libdisk.h"
 
@@ -107,7 +109,27 @@ COMMAND(hostname) {
     }
 
     if (strcmp(argv[1], "-I") == 0 || strcmp(argv[1], "-i") == 0)
-        return execlp("ipaddr", "ipaddr", (char *)NULL), fail("cannot run ipaddr");
+    {
+        /* all addresses except 127.0.0.1, on one line (like Ubuntu) */
+        struct ifaddrs *all, *a;
+        char t[64];
+
+        if (getifaddrs(&all) != 0)
+            return fail("cannot read the addresses");
+
+        for (a = all; a; a = a->ifa_next) {
+
+            if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET || !strcmp(a->ifa_name, "lo"))
+                continue;
+
+            inet_ntop(AF_INET, &((struct sockaddr_in *)a->ifa_addr)->sin_addr, t, sizeof(t));
+            printf("%s ", t);
+        }
+
+        printf("\n");
+        freeifaddrs(all);
+        return 0;
+    }
 
     /* set a new name: for now and for the next start */
     if (sethostname(argv[1], strlen(argv[1])) != 0)

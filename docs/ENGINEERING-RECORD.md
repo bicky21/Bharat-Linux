@@ -49,7 +49,7 @@ The requirements, as set during the project:
  desktop (src/desktop/)      window manager + Terminal, Files, Viewer,
                              Monitor, Disks, About; draws on /dev/fb0
  sh (src/sh.c)               the shell
- coreutils (src/coreutils/)  80 everyday commands in one program
+ coreutils (src/coreutils/)  86 everyday commands in one program
  login, sudo, passwd, useradd, userdel, usermod   accounts
  bdisk, bharat-disk, bharat-install               disks and installing
  lib*.h                      shared code: users, accounts, shutdown,
@@ -225,7 +225,7 @@ them.
 the command name decides what runs, one 200 KB binary instead of
 dozens of programs.
 
-**Solution.** 74 commands (now 80): files (`ls -la`, `cp -r`, `find`,
+**Solution.** 74 commands (now 86): files (`ls -la`, `cp -r`, `find`,
 `du -sh`, `chmod u+x` ...), text (`grep -rni`, `sort -nu`, `cut`, `tr`,
 `diff`, `less`, `xargs` ...), system (`uname -a`, `free -h`, `lsblk`,
 `dmesg`, `mount`, `killall` ...). The shell gained wildcards (`*.c`),
@@ -356,6 +356,50 @@ have.
 files left from earlier builds, a real boot order. Build steps must not
 depend on what is already in the folder.
 
+### Stage 12: network and right-click (PR #18)
+
+**Problem.** "Add more Linux features with network capability, right
+click, etc." The network depended on BusyBox (`ip`, `udhcpc`, 2 MB) and
+small wrapper programs; `ping` only tried a web connection; the desktop
+had no right-click menus, no clipboard, no maximise.
+
+**Approach.** Replace the borrowed network tools with our own: a
+network service that works by itself (like NetworkManager, in one small
+program) and the everyday commands. On the desktop, add one shared
+right-click menu system, a clipboard and dialogs, then use them in
+every app.
+
+**Solution.**
+- `netd`: switches on `lo`, finds wired cards (also USB tethering),
+  speaks DHCP over packet sockets (a card without an address cannot use
+  normal sockets), watches cables and new cards through netlink, renews
+  leases, writes `/etc/resolv.conf` and `/run/network/state`, takes
+  requests on `/run/netd.sock` (root or the person at the desktop,
+  checked with `SO_PEERCRED`). `/etc/network.conf` for fixed settings.
+- Commands: `ip`, `ifconfig`, a real `ping` (ICMP "ping sockets", no
+  root needed), `host`, `nslookup`, `wget` (HTTP, redirects, chunked),
+  `ss`/`netstat`, `network`, `hostname -I`. BusyBox removed (2 MB less).
+- Desktop: network icon in the taskbar and a Network app; right-click
+  menus on the desktop, icons, title bars, taskbar buttons, Files,
+  Terminal and Text Viewer; a shared clipboard; dialogs (name,
+  confirm, information); Files can copy, cut, paste, rename, make
+  folders and files, use a Trash, show properties, open a Terminal in
+  the folder, show or hide hidden files; maximise; four backgrounds.
+
+**Problems and fixes.**
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| no `/etc/resolv.conf` after connecting | it was written before the card was marked "connected" | mark it first |
+| a packet socket woke `netd` for every packet | it stayed open while connected | open it only while talking DHCP |
+
+**Tested in QEMU:** DHCP address, route and DNS; `ip a`, `ip r`,
+`ifconfig`, `ping`, `wget` from a web server, `ss`; network off/on
+(refused for other users); the taskbar icon and Network app; every
+right-click menu; new folder and file, copy and paste into a folder,
+rename, Terminal here, maximise, background change. Not testable here:
+name lookups of internet names (the test machine has no outside DNS).
+
 ---
 
 ## 4. How we work and test
@@ -382,7 +426,7 @@ depend on what is already in the folder.
 | Start-up | BIOS and UEFI live ISO; installed systems start by UEFI (Secure Boot off) |
 | Users | standard formats, locked root, first-account setup, sudo, logging |
 | Desktop | own window manager and 6 apps, low resource use |
-| Commands | 80 everyday commands in one 200 KB program, a capable shell |
+| Commands | 86 everyday commands in one program of about 250 KB, a capable shell |
 | Disks | GPT tool, guided add, fstab, USB sticks, zram, swap |
 | Install | graphical and text installer, Try mode |
 | Size | ISO about 45–55 MB; system uses about 40 MB of memory |
@@ -436,3 +480,5 @@ Decisions waiting for the owner:
 | #14 | 15 Nov | Fix: installer finds no disk (stale driver copy) |
 | #15 | 15 Nov | run.sh iso: boot the installed disk after Restart |
 | #16 | 15 Nov | Boot logo: Bharat Linux instead of TianoCore |
+| #17 | 15 Nov | Engineering record from the beginning |
+| #18 | 15 Nov | Network service and commands; right-click menus, clipboard, maximise |

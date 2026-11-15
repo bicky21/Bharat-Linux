@@ -8,12 +8,17 @@
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <pwd.h>
+#include <grp.h>
+#include <time.h>
 
 #include "desktop.h"
+#include "fileops.h"
 
 #define ROW_H 24
 
@@ -33,6 +38,7 @@ struct files {
     int count;
     int selected;
     int scroll;          /* first visible row */
+    int show_hidden;     /* names starting with a dot (settings) */
     char error[128];
 };
 
@@ -98,6 +104,10 @@ static void files_load(struct window *win, const char *path) {
             continue;
 
         if (strcmp(e->d_name, "..") == 0 && strcmp(path, "/") == 0)
+            continue;
+
+        /* hidden files (settings) are shown only when asked: Ctrl+H */
+        if (e->d_name[0] == '.' && strcmp(e->d_name, "..") && !f->show_hidden)
             continue;
 
         if (f->count == capacity) {
@@ -279,9 +289,409 @@ static void keep_selection_visible(struct window *win) {
     if (f->scroll < 0) f->scroll = 0;
 }
 
+
+/* ---------- right-click menu, clipboard and file actions ---------- */
+
+static void selected_path(struct files *f, char *out, size_t size) {
+
+    out[0] = 0;
+
+    if (f->selected >= 0 && f->selected < f->count && strcmp(f->items[f->selected].name, ".."))
+        join_path(f->path, f->items[f->selected].name, out, size);
+}
+
+static void show_error(const char *what, int err) {
+
+    char msg[600];
+
+    snprintf(msg, sizeof(msg), "%s\n%s", what, strerror(err));
+    dialog_info("Files", msg);
+}
+
+static void reload(struct window *win) {
+
+    struct files *f = win->data;
+    char path[PATH_MAX];
+    int keep = f->selected;
+
+    snprintf(path, sizeof(path), "%s", f->path);
+    files_load(win, path);
+    f->selected = keep < f->count ? keep : f->count - 1;
+}
+
+static void act_open(void *ctx, int arg) { (void)arg; struct window *w = ctx; open_entry(w, ((struct files *)w->data)->selected); }
+
+static void act_view(void *ctx, int arg) {
+
+    char p[PATH_MAX];
+
+    (void)arg;
+    selected_path(((struct window *)ctx)->data, p, sizeof(p));
+
+    if (p[0])
+        open_viewer(p);
+}
+
+static void act_copy(void *ctx, int arg) {
+
+    char p[PATH_MAX];
+    const char *one[1] = {p};
+
+    selected_path(((struct window *)ctx)->data, p, sizeof(p));
+
+    if (p[0])
+        clip_set_files(one, 1, arg);      /* arg 1: cut */
+}
+
+static void act_copy_path(void *ctx, int arg) {
+
+    char p[PATH_MAX];
+    struct files *f = ((struct window *)ctx)->data;
+
+    (void)arg;
+    selected_path(f, p, sizeof(p));
+    clip_set_text(p[0] ? p : f->path);
+}
+
+static void act_paste(void *ctx, int arg) {
+
+    struct window *win = ctx;
+    struct files *f = win->data;
+    char **paths, dir[PATH_MAX];
+    int cut, n = clip_files(&paths, &cut);
+
+    /* right-click on a folder: paste into it */
+    snprintf(dir, sizeof(dir), "%s", f->path);
+
+    if (arg && f->selected >= 0 && f->selected < f->count && f->items[f->selected].is_dir &&
+        strcmp(f->items[f->selected].name, ".."))
+        join_path(f->path, f->items[f->selected].name, dir, sizeof(dir));
+
+    for (int i = 0; i < n; i++) {
+
+        const char *name = strrchr(paths[i], '/');
+        char to[PATH_MAX];
+
+        free_name(dir, name ? name + 1 : paths[i], to, sizeof(to));
+
+        /* a folder into itself would never end */
+        if (!strncmp(to, paths[i], strlen(paths[i])) && to[strlen(paths[i])] == '/') {
+
+            dialog_info("Files", "A folder cannot be copied into itself.");
+            break;
+        }
+
+        int err = cut ? move_path(paths[i], to) : copy_path(paths[i], to);
+
+        if (err) {
+
+            char what[400];
+
+            snprintf(what, sizeof(what), "Could not %s %.300s", cut ? "move" : "copy", paths[i]);
+            show_error(what, err);
+            break;
+        }
+    }
+
+    if (cut)
+        clip_clear_files();
+
+    reload(win);
+}
+
+static void done_rename(void *ctx, const char *answer) {
+
+    struct window *win = ctx;
+    struct files *f = win->data;
+    char from[PATH_MAX], to[PATH_MAX];
+
+    if (strchr(answer, '/') || !strcmp(answer, ".") || !strcmp(answer, "..")) {
+
+        dialog_info("Rename", "A name cannot contain / or be . or ..");
+        return;
+    }
+
+    selected_path(f, from, sizeof(from));
+    join_path(f->path, answer, to, sizeof(to));
+
+    if (!from[0] || !strcmp(from, to))
+        return;
+
+    if (access(to, F_OK) == 0) {
+
+        dialog_info("Rename", "Something with that name is already here.");
+        return;
+    }
+
+    if (rename(from, to) != 0)
+        show_error("Could not rename it.", errno);
+
+    reload(win);
+}
+
+static void act_rename(void *ctx, int arg) {
+
+    struct window *win = ctx;
+    struct files *f = win->data;
+
+    (void)arg;
+
+    if (f->selected < 0 || f->selected >= f->count || !strcmp(f->items[f->selected].name, ".."))
+        return;
+
+    dialog_ask("Rename", "New name:", f->items[f->selected].name, "Rename", win, done_rename, win);
+}
+
+static void done_delete(void *ctx, const char *answer) {
+
+    struct window *win = ctx;
+    char p[PATH_MAX];
+
+    (void)answer;
+    selected_path(win->data, p, sizeof(p));
+
+    int err = p[0] ? remove_path(p) : 0;
+
+    if (err)
+        show_error("Could not delete it.", err);
+
+    reload(win);
+}
+
+static void act_trash(void *ctx, int arg) {
+
+    struct window *win = ctx;
+    struct files *f = win->data;
+    char p[PATH_MAX], q[PATH_MAX + 80];
+
+    selected_path(f, p, sizeof(p));
+
+    if (!p[0])
+        return;
+
+    /* in the Trash, or asked to: delete for ever, after asking */
+    if (arg || in_trash(f->path)) {
+
+        snprintf(q, sizeof(q), "Delete \"%.200s\" for ever?\nIt cannot be brought back.", f->items[f->selected].name);
+        dialog_confirm("Delete", q, "Delete", win, done_delete, win);
+        return;
+    }
+
+    int err = move_to_trash(p);
+
+    if (err)
+        show_error("Could not move it to the Trash.", err);
+
+    reload(win);
+}
+
+static void done_new(void *ctx, const char *answer, int folder) {
+
+    struct window *win = ctx;
+    struct files *f = win->data;
+    char p[PATH_MAX];
+
+    if (strchr(answer, '/')) {
+
+        dialog_info("Files", "A name cannot contain /");
+        return;
+    }
+
+    join_path(f->path, answer, p, sizeof(p));
+
+    int fd = -1, ok = folder ? mkdir(p, 0755) == 0 : (fd = open(p, O_WRONLY | O_CREAT | O_EXCL, 0644)) >= 0;
+
+    if (fd >= 0)
+        close(fd);
+
+    if (!ok)
+        show_error(folder ? "Could not make the folder." : "Could not make the file.", errno);
+
+    reload(win);
+}
+
+static void done_new_folder(void *ctx, const char *answer) { done_new(ctx, answer, 1); }
+static void done_new_file(void *ctx, const char *answer) { done_new(ctx, answer, 0); }
+
+static void act_new(void *ctx, int folder) {
+
+    dialog_ask(folder ? "New folder" : "New file", folder ? "Name of the new folder:" : "Name of the new file:",
+               folder ? "New folder" : "new-file.txt", "Create", ctx,
+               folder ? done_new_folder : done_new_file, ctx);
+}
+
+static void act_terminal_here(void *ctx, int arg) {
+
+    (void)arg;
+    open_terminal_at(((struct files *)((struct window *)ctx)->data)->path);
+}
+
+static void act_refresh(void *ctx, int arg) { (void)arg; reload(ctx); }
+
+static void act_hidden(void *ctx, int arg) {
+
+    struct files *f = ((struct window *)ctx)->data;
+
+    (void)arg;
+    f->show_hidden = !f->show_hidden;
+    reload(ctx);
+}
+
+static void act_open_trash(void *ctx, int arg) {
+
+    char t[PATH_MAX];
+
+    (void)ctx; (void)arg;
+    trash_dir(t, sizeof(t));
+    open_files(t);
+}
+
+static void done_empty_trash(void *ctx, const char *answer) {
+
+    char t[PATH_MAX];
+    DIR *d;
+    struct dirent *e;
+
+    (void)answer;
+    trash_dir(t, sizeof(t));
+    d = opendir(t);
+
+    while (d && (e = readdir(d)) != NULL) {
+
+        char p[PATH_MAX];
+
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+            continue;
+
+        join_path(t, e->d_name, p, sizeof(p));
+        remove_path(p);
+    }
+
+    if (d)
+        closedir(d);
+
+    reload(ctx);
+}
+
+static void act_empty_trash(void *ctx, int arg) {
+
+    (void)arg;
+    dialog_confirm("Empty the Trash", "Delete everything in the Trash for ever?", "Delete", ctx, done_empty_trash, ctx);
+}
+
+static void act_properties(void *ctx, int arg) {
+
+    struct files *f = ((struct window *)ctx)->data;
+    char p[PATH_MAX], info[600], when[64], size[32];
+    struct stat st;
+
+    (void)arg;
+    selected_path(f, p, sizeof(p));
+
+    if (!p[0])
+        snprintf(p, sizeof(p), "%s", f->path);
+
+    if (lstat(p, &st) != 0) {
+
+        show_error("Cannot read its details.", errno);
+        return;
+    }
+
+    struct passwd *pw = getpwuid(st.st_uid);
+    struct group *gr = getgrgid(st.st_gid);
+    char owner[64], group[64];
+
+    snprintf(owner, sizeof(owner), "%s", pw ? pw->pw_name : "?");
+    snprintf(group, sizeof(group), "%s", gr ? gr->gr_name : "?");
+    strftime(when, sizeof(when), "%d %b %Y %H:%M", localtime(&st.st_mtime));
+    human_size(st.st_size, size, sizeof(size));
+
+    const char *name = strrchr(p, '/');
+
+    snprintf(info, sizeof(info), "Name: %.80s\nType: %s    Size: %s\nOwner: %s    Group: %s\n"
+             "Rights: %c%c%c%c%c%c%c%c%c (%04o)\nChanged: %s",
+             name && name[1] ? name + 1 : p,
+             S_ISDIR(st.st_mode) ? "folder" : S_ISLNK(st.st_mode) ? "link" : "file", size, owner, group,
+             st.st_mode & 0400 ? 'r' : '-', st.st_mode & 0200 ? 'w' : '-', st.st_mode & 0100 ? 'x' : '-',
+             st.st_mode & 040 ? 'r' : '-', st.st_mode & 020 ? 'w' : '-', st.st_mode & 010 ? 'x' : '-',
+             st.st_mode & 04 ? 'r' : '-', st.st_mode & 02 ? 'w' : '-', st.st_mode & 01 ? 'x' : '-',
+             (unsigned)(st.st_mode & 07777), when);
+    dialog_info("Properties", info);
+}
+
+static void files_menu(struct window *win, int on_item) {
+
+    struct files *f = win->data;
+    char **paths;
+    int cut, have = clip_files(&paths, &cut) > 0;
+    int trash = in_trash(f->path);
+
+    popup_begin(win);
+
+    if (on_item) {
+
+        int dir = f->items[f->selected].is_dir;
+
+        popup_add("Open", act_open, 0, 1);
+
+        if (!dir)
+            popup_add("Open in Text Viewer", act_view, 0, 1);
+
+        popup_line();
+        popup_add("Cut", act_copy, 1, !trash || 1);
+        popup_add("Copy", act_copy, 0, 1);
+
+        if (dir)
+            popup_add("Paste into folder", act_paste, 1, have);
+
+        popup_add("Copy path", act_copy_path, 0, 1);
+        popup_line();
+        popup_add("Rename...", act_rename, 0, 1);
+        popup_add(trash ? "Delete for ever..." : "Move to Trash", act_trash, 0, 1);
+
+        if (!trash)
+            popup_add("Delete for ever...", act_trash, 1, 1);
+
+        popup_line();
+        popup_add("Properties", act_properties, 0, 1);
+    }
+    else {
+
+        popup_add("Paste", act_paste, 0, have);
+        popup_line();
+        popup_add("New folder...", act_new, 1, !trash);
+        popup_add("New file...", act_new, 0, !trash);
+        popup_line();
+        popup_add("Open Terminal here", act_terminal_here, 0, 1);
+        popup_add("Refresh", act_refresh, 0, 1);
+        popup_add(f->show_hidden ? "Hide hidden files" : "Show hidden files", act_hidden, 0, 1);
+
+        if (trash)
+            popup_add("Empty the Trash...", act_empty_trash, 0, 1);
+        else
+            popup_add("Open the Trash", act_open_trash, 0, 1);
+
+        popup_add("Properties", act_properties, 0, 1);
+    }
+
+    popup_show();
+}
+
 static void files_click(struct window *win, int x, int y, int button, int dbl) {
 
     struct files *f = win->data;
+
+    if (button == 2 && y >= TOOLBAR_H) {
+
+        int i = f->scroll + (y - TOOLBAR_H - (f->error[0] ? 34 : 0)) / ROW_H;
+        int on_item = i >= 0 && i < f->count && strcmp(f->items[i].name, "..");
+
+        if (on_item)
+            f->selected = i;
+
+        files_menu(win, on_item);
+        return;
+    }
 
     if (button != 1)
         return;
@@ -331,7 +741,19 @@ static void files_key(struct window *win, struct event *ev) {
         case K_END:  f->selected = f->count - 1; break;
         case '\r':   open_entry(win, f->selected); return;
         case '\b':   go_up(win); return;
-        default:     return;
+        case K_DELETE: act_trash(win, (ev->mods & MOD_SHIFT) ? 1 : 0); return;
+        case K_F2:   act_rename(win, 0); return;
+        default:
+
+            if (ev->mods & MOD_CTRL) {
+
+                if (ev->key == 'c' || ev->key == 'C') act_copy(win, 0);
+                else if (ev->key == 'x' || ev->key == 'X') act_copy(win, 1);
+                else if (ev->key == 'v' || ev->key == 'V') act_paste(win, 0);
+                else if (ev->key == 'h' || ev->key == 'H') act_hidden(win, 0);
+            }
+
+            return;
     }
 
     keep_selection_visible(win);
@@ -464,6 +886,53 @@ static void viewer_key(struct window *win, struct event *ev) {
     }
 }
 
+static void viewer_copy(void *ctx, int arg) {
+
+    struct viewer *v = ((struct window *)ctx)->data;
+    size_t size = 1;
+
+    (void)arg;
+
+    for (int i = 0; i < v->count; i++)
+        size += strlen(v->lines[i]) + 1;
+
+    char *all = malloc(size), *p = all;
+
+    if (!all)
+        return;
+
+    for (int i = 0; i < v->count; i++) {
+
+        size_t n = strlen(v->lines[i]);
+
+        memcpy(p, v->lines[i], n);
+        p += n;
+        *p++ = '\n';
+    }
+
+    *p = 0;
+    clip_set_text(all);
+    free(all);
+}
+
+static void viewer_close(void *ctx, int arg) { (void)arg; ((struct window *)ctx)->want_close = 1; }
+
+static void viewer_click(struct window *win, int x, int y, int button, int dbl) {
+
+    struct viewer *v = win->data;
+
+    (void)x; (void)y; (void)dbl;
+
+    if (button != 2)
+        return;
+
+    popup_begin(win);
+    popup_add("Copy all text", viewer_copy, 0, v->count > 0);
+    popup_line();
+    popup_add("Close", viewer_close, 0, 1);
+    popup_show();
+}
+
 static void viewer_destroy(struct window *win) {
 
     struct viewer *v = win->data;
@@ -497,6 +966,7 @@ void open_viewer(const char *path) {
     win->draw = viewer_draw;
     win->wheel = viewer_wheel;
     win->key = viewer_key;
+    win->click = viewer_click;
     win->destroy = viewer_destroy;
 
     FILE *file = fopen(path, "rb");

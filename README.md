@@ -18,7 +18,7 @@ every part that the user touches is written here, from scratch, in C.
 | Other commands (`ps`, `kill`, `sudo`, `useradd`, ...) | Written here: `src/*.c` |
 | Graphical desktop (`desktop`) | Written here: `src/desktop/` |
 | `modprobe`, device helper `devd` | Written here: `src/modprobe.c`, `src/devd.c` |
-| Network helpers (`ip`, `udhcpc`) | BusyBox (ready-made, to be replaced) |
+| Network (`netd`, DHCP, `ip`, `ping`, `wget`, `ss`) | own code |
 
 So right now this is **our own userland on top of the Linux kernel**.
 It boots like a normal Linux system: an animated boot screen with the
@@ -228,9 +228,42 @@ options people use most:
 | Users | `sudo`, `passwd`, `useradd`, `userdel`, `usermod`, `id`, `groups`, `whoami` |
 | Scripts | `test` / `[ ]`, `true`, `false` |
 
-All 80 commands in `src/coreutils/` are one program of about 200 KB:
+All 86 commands in `src/coreutils/` are one program of about 250 KB:
 `/bin/ls`, `/bin/cp` ... are links to `/bin/coreutils`, which looks at the
 name it was started with.
+
+## Network
+
+Wired network connects by itself at start, like on other Linux systems:
+`netd` (our own network service) asks the network for an address
+(DHCP), sets the gateway and name servers (`/etc/resolv.conf`), notices
+cables being plugged in and out, and renews the address in time.
+Drivers are included for QEMU, VirtualBox, VMware and common Intel and
+Realtek cards, and for phones sharing their internet over USB.
+
+- The **network icon** in the taskbar is green when connected; click it
+  for the **Network** app (address, gateway, DNS, Reconnect, Turn off/on).
+- Commands: `network` (status), `network renew|on|off`, `ip a`, `ip r`,
+  `ip link set eth0 up`, `ifconfig`, `ping -c 4 HOST`, `host NAME`,
+  `nslookup NAME`, `wget URL`, `ss -tlna`, `netstat`, `hostname -I`.
+- Fixed settings instead of DHCP: `/etc/network.conf`.
+- Not yet: Wi-Fi (needs firmware and a Wi-Fi security program), and
+  `https://` downloads in `wget` (needs TLS, planned with security).
+
+## Right-click and the clipboard
+
+- **Desktop:** Open Terminal, Files, Network, Disks, System Monitor, four
+  backgrounds (Sunrise, Tiranga, Night, Forest), About.
+- **Files:** Open, Open in Text Viewer, Cut, Copy, Paste (also into a
+  folder), Copy path, Rename, Move to Trash, Delete for ever, New folder,
+  New file, Open Terminal here, Show hidden files, Properties, Open/Empty
+  the Trash. Keys: Ctrl+C, Ctrl+X, Ctrl+V, F2, Delete, Shift+Delete,
+  Ctrl+H.
+- **Terminal:** Copy all text, Paste, Clear, New Terminal. Ctrl+Shift+C,
+  Ctrl+Shift+V, middle button pastes.
+- **Windows:** right-click the title bar or a taskbar button for
+  Minimise, Maximise and Close; the new middle title button, or a
+  double-click on the title, maximises.
 
 ## Disks and USB sticks
 

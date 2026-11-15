@@ -147,7 +147,7 @@ static int list_commands(void) {
         printf("  %-10s %s\n", commands[i].name, commands[i].help);
 
     printf("\nAlso: sudo, passwd, useradd, userdel, usermod, id, groups, ps, kill,\n"
-           "      top, nano, service, ping, ifup, dhcp, desktop, poweroff, reboot\n");
+           "      top, nano, service, desktop, poweroff, reboot\n");
 
     return 0;
 }

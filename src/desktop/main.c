@@ -157,7 +157,7 @@ int main(void) {
         struct window *owners[MAX_FDS];
 
         int ni = input_fds(input, MAX_FDS / 2);
-        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2 - 2);
+        int nw = wm_poll_fds(win_fds, owners, MAX_FDS / 2 - 3);
 
         for (int i = 0; i < ni; i++)
             pfd[i] = (struct pollfd){.fd = input[i], .events = POLLIN};
@@ -169,6 +169,7 @@ int main(void) {
 
         pfd[watch] = (struct pollfd){.fd = input_watch_fd(), .events = POLLIN};
         pfd[watch + 1] = (struct pollfd){.fd = media_watch_fd(), .events = POLLIN};
+        pfd[watch + 2] = (struct pollfd){.fd = net_watch_fd(), .events = POLLIN};
 
         /* a System Monitor opened since we last looked needs seconds */
         if (wm_wants_seconds() && next_tick > now_ms() + 1000)
@@ -184,7 +185,7 @@ int main(void) {
             wait = 0;
 
         /* sleep until something happens; no busy waiting */
-        int ready = poll(pfd, watch + 2, (int)wait);
+        int ready = poll(pfd, watch + 3, (int)wait);
 
         if (ready < 0 && errno != EINTR)
             break;
@@ -216,6 +217,10 @@ int main(void) {
             media_watch_read();
 
         media_run();
+
+        /* the network changed: the taskbar icon shows it */
+        if (ready > 0 && (pfd[watch + 2].revents & POLLIN))
+            net_watch_read();
 
         wm_cleanup();
 

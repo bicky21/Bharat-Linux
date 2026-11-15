@@ -11,6 +11,7 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "desktop.h"
 
@@ -262,6 +263,44 @@ static void destroy(struct window *win) {
     free(win);
 }
 
+int wm_window_alive(struct window *win) {
+
+    for (int i = 0; i < nwin; i++)
+        if (wins[i] == win && !win->want_close)
+            return 1;
+
+    return 0;
+}
+
+void wm_toggle_maximize(struct window *win) {
+
+    if (win->maximized) {
+
+        win->x = win->saved_x;
+        win->y = win->saved_y;
+        win->w = win->saved_w;
+        win->h = win->saved_h;
+        win->maximized = 0;
+    }
+    else {
+
+        win->saved_x = win->x;
+        win->saved_y = win->y;
+        win->saved_w = win->w;
+        win->saved_h = win->h;
+        win->x = 0;
+        win->y = 0;
+        win->w = screen_w;
+        win->h = screen_h - TASKBAR_H;
+        win->maximized = 1;
+    }
+
+    if (win->resized)
+        win->resized(win);
+
+    wm_redraw();
+}
+
 void wm_cleanup(void) {
 
     int out = 0;
@@ -417,6 +456,24 @@ void icon_disk(int x, int y, int s) {
     fill(x + s / 5, y + s / 2 + s / 10, s / 3, 2, 0xD0D7DE);
 }
 
+void icon_network(int x, int y, int s, int connected) {
+
+    /* three bars of a signal, like on a phone; grey with a line when off */
+    uint32_t on = connected > 0 ? 0x56D364 : 0x8B949E;
+    int bw = s / 5;
+
+    for (int i = 0; i < 3; i++) {
+
+        int bh = s * (i + 2) / 5;
+
+        fill_round(x + s / 10 + i * (bw + s / 10), y + s - bh, bw, bh, 2, on);
+    }
+
+    if (connected <= 0)
+        for (int i = 0; i < s; i++)
+            fill(x + i, y + i, 2, 2, 0xCF222E);
+}
+
 /* ---------- desktop icons and the start menu entries ---------- */
 
 struct launcher {
@@ -425,6 +482,11 @@ struct launcher {
     void (*icon)(int x, int y, int s);
     void (*open)(void);
 };
+
+static void icon_network_launcher(int x, int y, int s) {
+
+    icon_network(x, y, s, 1);
+}
 
 static void open_home_files(void) {
 
@@ -438,6 +500,7 @@ static struct launcher launchers[] = {
     {"Files",          "Files",        icon_folder,   open_home_files},
     {"System Monitor", "Monitor",      icon_monitor,  open_monitor},
     {"Disks",          "Disks",        icon_disk,     open_disks},
+    {"Network",        "Network",      icon_network_launcher, open_network},
     {"About Bharat",   "About Bharat", icon_about,    open_about},
 };
 
@@ -646,6 +709,15 @@ static int in_menu(int px, int py) {
 
 /* ---------- taskbar ---------- */
 
+/* where the network icon sits in the taskbar */
+#define NET_W 36
+
+static int net_icon_x(void) {
+
+    return screen_w - 14 - 86 - NET_W;
+}
+
+
 #define START_W 112
 
 static int task_button_w(void) {
@@ -692,6 +764,15 @@ static void draw_taskbar(void) {
              wins[i]->minimized ? 0x8B949E : C_WHITE);
     }
 
+    /* network: green when connected */
+    int nx = net_icon_x();
+    int state = net_connected();
+
+    if (inside(mouse_x, mouse_y, nx, y + 4, NET_W, TASKBAR_H - 6))
+        fill_round(nx, y + 5, NET_W, TASKBAR_H - 8, 6, 0x30363D);
+
+    icon_network(nx + 6, y + 9, 24, state);
+
     /* clock and date */
     time_t t = time(NULL);
     struct tm *tm = localtime(&t);
@@ -727,7 +808,7 @@ static void draw_window(struct window *win, int active) {
 
     char title[64];
 
-    fit_text(&font_bold, win->title, w - 2 * BUTTON_W - 20, title, sizeof(title));
+    fit_text(&font_bold, win->title, w - 3 * BUTTON_W - 20, title, sizeof(title));
     text(&font_bold, x + 12, y + 7, title, title_color);
 
     /* close button (x) */
@@ -747,10 +828,28 @@ static void draw_window(struct window *win, int active) {
         put_pixel(cx + 21 + i, y + 14 - i, title_color, 255);
     }
 
-    /* minimise button (_) */
-    int mx = cx - BUTTON_W;
+    /* maximise button: a square (two squares when maximised) */
+    int zx = cx - BUTTON_W;
 
     title_color = active ? C_WHITE : 0x57606A;
+
+    if (inside(mouse_x, mouse_y, zx, y, BUTTON_W, TITLE_H - 1))
+        fill(zx, y, BUTTON_W, TITLE_H - 1, active ? 0x3B5488 : 0xD0D7DE);
+
+    if (win->maximized) {
+
+        frame(zx + 17, y + 8, 9, 9, title_color);
+        fill(zx + 14, y + 11, 9, 9, active ? 0x22355E : 0xE6E9ED);
+        frame(zx + 14, y + 11, 9, 9, title_color);
+    }
+    else {
+
+        frame(zx + 14, y + 9, 12, 11, title_color);
+        fill(zx + 14, y + 9, 12, 2, title_color);
+    }
+
+    /* minimise button (_) */
+    int mx = zx - BUTTON_W;
 
     if (inside(mouse_x, mouse_y, mx, y, BUTTON_W, TITLE_H - 1))
         fill(mx, y, BUTTON_W, TITLE_H - 1, active ? 0x3B5488 : 0xD0D7DE);
@@ -798,6 +897,8 @@ static void draw_scene(void) {
 
     if (menu_open)
         draw_menu();
+
+    popup_draw();
 
     draw_cursor(mouse_x, mouse_y);
 }
@@ -862,6 +963,56 @@ static void keep_on_screen(struct window *win) {
     if (win->y > screen_h - TASKBAR_H - TITLE_H) win->y = screen_h - TASKBAR_H - TITLE_H;
 }
 
+/* ---------- right-click menus of the desktop itself ---------- */
+
+static void act_minimize(void *ctx, int arg) { (void)arg; ((struct window *)ctx)->minimized = 1; }
+static void act_maximize(void *ctx, int arg) { (void)arg; wm_toggle_maximize(ctx); }
+static void act_close(void *ctx, int arg) { (void)arg; ((struct window *)ctx)->want_close = 1; }
+static void act_restore(void *ctx, int arg) { (void)arg; raise_window(ctx); }
+
+static void window_menu(struct window *win) {
+
+    popup_begin(win);
+
+    if (win->minimized)
+        popup_add("Show", act_restore, 0, 1);
+    else
+        popup_add("Minimise", act_minimize, 0, 1);
+
+    popup_add(win->maximized ? "Restore size" : "Maximise", act_maximize, 0, 1);
+    popup_line();
+    popup_add("Close", act_close, 0, 1);
+    popup_show();
+}
+
+static void act_launch(void *ctx, int arg) { (void)ctx; launchers[arg].open(); }
+static void act_wallpaper(void *ctx, int arg) { (void)ctx; wm_set_wallpaper(arg); }
+
+static void desktop_menu(void) {
+
+    popup_begin(NULL);
+    popup_add("Open Terminal", act_launch, 0, 1);
+    popup_add("Files", act_launch, 1, 1);
+    popup_add("Network", act_launch, LAUNCHERS - 2, 1);
+    popup_add("Disks", act_launch, 3, 1);
+    popup_add("System Monitor", act_launch, 2, 1);
+    popup_line();
+    popup_add("Background: Sunrise", act_wallpaper, 0, 1);
+    popup_add("Background: Tiranga", act_wallpaper, 1, 1);
+    popup_add("Background: Night", act_wallpaper, 2, 1);
+    popup_add("Background: Forest", act_wallpaper, 3, 1);
+    popup_line();
+    popup_add("About Bharat Linux", act_launch, LAUNCHERS - 1, 1);
+    popup_show();
+}
+
+static void icon_menu(int icon) {
+
+    popup_begin(NULL);
+    popup_add("Open", act_launch, icon, 1);
+    popup_show();
+}
+
 static void mouse_down(struct event *ev) {
 
     int px = mouse_x, py = mouse_y;
@@ -876,6 +1027,10 @@ static void mouse_down(struct event *ev) {
     last_click_y = py;
 
     wm_redraw();
+
+    /* 0. a right-click menu is open: it gets the click */
+    if (popup_click())
+        return;
 
     /* 1. the start menu is open: it gets the click */
     if (menu_open) {
@@ -902,7 +1057,19 @@ static void mouse_down(struct event *ev) {
             return;
         }
 
+        if (px >= net_icon_x() && px < net_icon_x() + NET_W) {
+
+            open_network();
+            return;
+        }
+
         int i = (px - START_W) / task_button_w();
+
+        if (px >= START_W && i >= 0 && i < nwin && ev->button == 2) {
+
+            window_menu(wins[i]);
+            return;
+        }
 
         if (px >= START_W && i >= 0 && i < nwin) {
 
@@ -928,6 +1095,12 @@ static void mouse_down(struct event *ev) {
 
         if (ry < TITLE_H) {
 
+            if (ev->button == 2) {
+
+                window_menu(win);
+                return;
+            }
+
             if (ev->button != 1)
                 return;
 
@@ -937,7 +1110,15 @@ static void mouse_down(struct event *ev) {
             }
             else if (rx >= win->w - 2 * BUTTON_W) {
 
+                wm_toggle_maximize(win);
+            }
+            else if (rx >= win->w - 3 * BUTTON_W) {
+
                 win->minimized = 1;
+            }
+            else if (dbl) {
+
+                wm_toggle_maximize(win);
             }
             else {
 
@@ -950,7 +1131,7 @@ static void mouse_down(struct event *ev) {
             return;
         }
 
-        if (ev->button == 1 && rx >= win->w - GRIP && ry >= win->h - GRIP) {
+        if (ev->button == 1 && !win->maximized && rx >= win->w - GRIP && ry >= win->h - GRIP) {
 
             drag_mode = DRAG_RESIZE;
             drag_win = win;
@@ -975,6 +1156,16 @@ static void mouse_down(struct event *ev) {
 
     selected_icon = icon;
 
+    if (ev->button == 2) {
+
+        if (icon >= 0)
+            icon_menu(icon);
+        else
+            desktop_menu();
+
+        return;
+    }
+
     if (icon >= 0 && dbl && ev->button == 1)
         launch(icon);
 }
@@ -997,8 +1188,13 @@ static struct rect hover_box(int px, int py) {
         return (struct rect){x + 6, item_y(y, i), MENU_W - 12, MENU_ITEM};
     }
 
-    if (py >= screen_h - TASKBAR_H)
+    if (py >= screen_h - TASKBAR_H) {
+
+        if (px >= net_icon_x() && px < net_icon_x() + NET_W)
+            return (struct rect){net_icon_x(), screen_h - TASKBAR_H, NET_W, TASKBAR_H};
+
         return px < START_W ? (struct rect){0, screen_h - TASKBAR_H, START_W, TASKBAR_H} : none;
+    }
 
     struct window *win = window_at(px, py);
 
@@ -1008,8 +1204,9 @@ static struct rect hover_box(int px, int py) {
     if (px >= win->x + win->w - BUTTON_W)
         return (struct rect){win->x + win->w - BUTTON_W, win->y, BUTTON_W, TITLE_H};
 
-    if (px >= win->x + win->w - 2 * BUTTON_W)
-        return (struct rect){win->x + win->w - 2 * BUTTON_W, win->y, BUTTON_W, TITLE_H};
+    for (int b = 2; b <= 3; b++)
+        if (px >= win->x + win->w - b * BUTTON_W)
+            return (struct rect){win->x + win->w - b * BUTTON_W, win->y, BUTTON_W, TITLE_H};
 
     return none;
 }
@@ -1019,6 +1216,8 @@ static void mouse_move(int old_x, int old_y) {
     /* the pointer itself: where it was, and where it is now */
     wm_damage(old_x, old_y, CURSOR_W, CURSOR_H);
     wm_damage(mouse_x, mouse_y, CURSOR_W, CURSOR_H);
+
+    popup_hover();
 
     /* a button that lights up (or stops lighting up) under the pointer */
     struct rect now = hover_box(mouse_x, mouse_y);
@@ -1031,6 +1230,14 @@ static void mouse_move(int old_x, int old_y) {
     }
 
     if (drag_mode == DRAG_MOVE && drag_win) {
+
+        if (drag_win->maximized) {
+
+            int keep = drag_dx * drag_win->saved_w / (drag_win->w ? drag_win->w : 1);
+
+            wm_toggle_maximize(drag_win);
+            drag_dx = keep;
+        }
 
         wm_damage_window(drag_win);
 
@@ -1064,6 +1271,9 @@ static void mouse_move(int old_x, int old_y) {
 }
 
 static void key_press(struct event *ev) {
+
+    if (popup_key(ev))
+        return;
 
     /* Ctrl+Alt+Backspace: leave the desktop (log out) */
     if ((ev->mods & MOD_CTRL) && (ev->mods & MOD_ALT) && ev->key == '\b') {
@@ -1156,13 +1366,72 @@ void wm_event(struct event *ev) {
 
 /* ---------- wallpaper (drawn once, then reused) ---------- */
 
+static const struct {
+    uint32_t top, bottom, glow;
+} themes[] = {
+    {0x0B1A33, 0x1D3B61, C_SAFFRON},     /* Sunrise: night blue with a saffron glow */
+    {0x2A1A0A, 0x0E3B1E, 0xF0F0F0},      /* Tiranga: saffron-brown to green, white glow */
+    {0x05070C, 0x161B26, 0x3B6FD8},      /* Night */
+    {0x0B2318, 0x1F4D33, 0xC7E36B},      /* Forest */
+};
+
+static int theme = -1;
+
+static void theme_file(char *out, size_t size) {
+
+    const char *home = getenv("HOME");
+
+    snprintf(out, size, "%s/.config/bharat/wallpaper", home ? home : "/tmp");
+}
+
+void wm_set_wallpaper(int t) {
+
+    char path[512], dir[512];
+
+    theme = t < 0 || t > 3 ? 0 : t;
+
+    /* remember it for next time */
+    theme_file(path, sizeof(path));
+    snprintf(dir, sizeof(dir), "%s", path);
+    *strrchr(dir, '/') = 0;
+    *strrchr(dir, '/') = 0;
+    mkdir(dir, 0700);
+    snprintf(dir + strlen(dir), sizeof(dir) - strlen(dir), "/bharat");
+    mkdir(dir, 0700);
+
+    FILE *f = fopen(path, "w");
+
+    if (f) {
+
+        fprintf(f, "%d\n", theme);
+        fclose(f);
+    }
+
+    wm_draw_wallpaper();
+    wm_redraw();
+}
+
 void wm_draw_wallpaper(void) {
+
+    if (theme < 0) {
+
+        char path[512];
+
+        theme_file(path, sizeof(path));
+        FILE *f = fopen(path, "r");
+
+        if (!f || fscanf(f, "%d", &theme) != 1 || theme < 0 || theme > 3)
+            theme = 0;
+
+        if (f)
+            fclose(f);
+    }
 
     gfx_area(0, 0, screen_w, screen_h);
 
-    gradient(0, 0, screen_w, screen_h, 0x0B1A33, 0x1D3B61);
+    gradient(0, 0, screen_w, screen_h, themes[theme].top, themes[theme].bottom);
 
-    /* a warm saffron glow in the lower right, like a sunrise */
+    /* a warm glow in the lower right, like a sunrise */
     int gx = screen_w * 4 / 5, gy = screen_h;
     double reach = screen_w * 0.6;
 
@@ -1176,7 +1445,7 @@ void wm_draw_wallpaper(void) {
 
                 double k = 1.0 - d / reach;
 
-                put_pixel(x, y, C_SAFFRON, (int)(k * k * 70));
+                put_pixel(x, y, themes[theme].glow, (int)(k * k * 70));
             }
         }
     }
