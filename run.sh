@@ -63,11 +63,14 @@ if [ "$MODE" = iso ] || [ "$MODE" = installed ]; then
 
     # the disk to install on: SATA, like most PCs
     [ -f images/vm-disk.img ] || truncate -s 20G images/vm-disk.img
-    DISK="-drive file=images/vm-disk.img,format=raw,if=none,id=hd -device ide-hd,drive=hd,bus=ide.0"
+    # the disk comes first: while it is empty the PC starts the ISO, and
+    # after installing (and "Restart now") it starts the installed system,
+    # like a real PC where you would pull out the USB stick
+    DISK="-drive file=images/vm-disk.img,format=raw,if=none,id=hd -device ide-hd,drive=hd,bus=ide.0,bootindex=0"
 
     if [ "$MODE" = iso ]; then
         [ -f images/bharat-live.iso ] || { echo "Run 'make iso' first"; exit 1; }
-        CD="-drive file=images/bharat-live.iso,media=cdrom,if=none,id=cd -device ide-cd,drive=cd,bus=ide.1,bootindex=0"
+        CD="-drive file=images/bharat-live.iso,media=cdrom,if=none,id=cd -device ide-cd,drive=cd,bus=ide.1,bootindex=1"
     else
         CD=""
     fi
