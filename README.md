@@ -343,6 +343,12 @@ Bharat Linux handles accounts the way Ubuntu and Fedora do:
 New users get a copy of `/etc/skel` as their home folder. The last
 administrator cannot be deleted.
 
+## Engineering record
+
+How Bharat Linux was built, stage by stage: the problems we met, how we
+approached them and how they were solved, in
+[docs/ENGINEERING-RECORD.md](docs/ENGINEERING-RECORD.md).
+
 ## Known limits (honest list)
 
 - `sudo` rules are all-or-nothing: an administrator may run anything.
