@@ -49,7 +49,7 @@ The requirements, as set during the project:
  desktop (src/desktop/)      window manager + Terminal, Files, Viewer,
                              Monitor, Disks, About; draws on /dev/fb0
  sh (src/sh.c)               the shell
- coreutils (src/coreutils/)  86 everyday commands in one program
+ coreutils (src/coreutils/)  85 everyday commands in one program
  login, sudo, passwd, useradd, userdel, usermod   accounts
  bdisk, bharat-disk, bharat-install               disks and installing
  lib*.h                      shared code: users, accounts, shutdown,
@@ -225,7 +225,7 @@ them.
 the command name decides what runs, one 200 KB binary instead of
 dozens of programs.
 
-**Solution.** 74 commands (now 86): files (`ls -la`, `cp -r`, `find`,
+**Solution.** 74 commands (now 85): files (`ls -la`, `cp -r`, `find`,
 `du -sh`, `chmod u+x` ...), text (`grep -rni`, `sort -nu`, `cut`, `tr`,
 `diff`, `less`, `xargs` ...), system (`uname -a`, `free -h`, `lsblk`,
 `dmesg`, `mount`, `killall` ...). The shell gained wildcards (`*.c`),
@@ -400,6 +400,51 @@ right-click menu; new folder and file, copy and paste into a folder,
 rename, Terminal here, maximise, background change. Not testable here:
 name lookups of internet names (the test machine has no outside DNS).
 
+### Stage 13: our own web browser (PR #19)
+
+**Problem.** "Build our own browser inside my Linux." A full modern
+browser (with JavaScript) takes large teams years; the owner chose a
+**reading browser** first, **BearSSL** for https, and Tor later.
+
+**Approach.** Split the browser in two processes:
+
+- `bharat-fetch` (the helper): network, TLS (BearSSL), cookies, picture
+  decoding (stb_image), downloads. It talks to the window through a
+  pipe with simple framed messages. If a page or picture crashes it,
+  only the helper dies and is started again.
+- the browser window (in the desktop): our own HTML reader (forgiving
+  of broken pages), our own layout (words into lines, blocks, lists,
+  tables, pictures, form fields), tabs, history, bookmarks, forms.
+
+**Solution.**
+- `src/liburl.h` (addresses), `src/libhttp.h` (HTTP/1.1, redirects,
+  chunked answers, cookies, TLS with certificate checks against
+  `/etc/ssl/certs/ca-certificates.crt`).
+- `src/net/bharat-fetch.c`, `src/net/wget.c` (now with https).
+- `src/desktop/html.c`, `layout.c`, `browser.c`; three more font sizes
+  (italic, two heading sizes).
+- `tools/third-party.sh`: BearSSL and stb_image pinned by SHA-256.
+
+**Problems and fixes.**
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| bearssl.org could not be reached from the build machine | network rules | use Debian's copy of the release from the Ubuntu archive, pinned by SHA-256 |
+| the window did not redraw after typing or loading | the window manager leaves redrawing to windows that read a file | the browser redraws itself after keys and answers |
+| a gap in the underline between the words of a link | each word is drawn on its own | join the underline (and the click area) across spaces |
+| `about:` links on the start page did nothing | the address reader refused unknown schemes | the browser's own pages are allowed |
+| a lost "else" in the table code | a missing pair of braces | braces (the compiler warned) |
+
+**Tested in QEMU** with a local test site (QEMU's network reaches the
+host's web server): start page, a test encyclopedia page with headings,
+lists, a bordered table, code, pictures (PNG with a given size, JPEG
+with its own size), hidden parts, a form (text, check box, choice) sent
+with GET, a 404 page, a ZIP download to `~/Downloads`, a text file,
+tabs, back, find, history, right-click menus. https was tested on the
+build machine with a local server and a test certificate authority
+(accepted with it, refused without it). Real internet sites could not
+be reached from the test machine.
+
 ---
 
 ## 4. How we work and test
@@ -426,7 +471,7 @@ name lookups of internet names (the test machine has no outside DNS).
 | Start-up | BIOS and UEFI live ISO; installed systems start by UEFI (Secure Boot off) |
 | Users | standard formats, locked root, first-account setup, sudo, logging |
 | Desktop | own window manager and 6 apps, low resource use |
-| Commands | 86 everyday commands in one program of about 250 KB, a capable shell |
+| Commands | 85 everyday commands in one program of about 250 KB, a capable shell |
 | Disks | GPT tool, guided add, fstab, USB sticks, zram, swap |
 | Install | graphical and text installer, Try mode |
 | Size | ISO about 45–55 MB; system uses about 40 MB of memory |
@@ -482,3 +527,4 @@ Decisions waiting for the owner:
 | #16 | 15 Nov | Boot logo: Bharat Linux instead of TianoCore |
 | #17 | 15 Nov | Engineering record from the beginning |
 | #18 | 15 Nov | Network service and commands; right-click menus, clipboard, maximise |
+| #19 | 15 Nov | Bharat Browser: our own web browser (https via BearSSL) |

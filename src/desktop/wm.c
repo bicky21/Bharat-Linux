@@ -483,6 +483,41 @@ struct launcher {
     void (*open)(void);
 };
 
+void icon_browser(int x, int y, int s) {
+
+    /* a globe: a blue circle with lines of longitude and latitude */
+    int r = s / 2 - 1, cx = x + s / 2, cy = y + s / 2;
+
+    fill_circle(cx, cy, r, 0x0969DA);
+    fill_circle(cx, cy, r - 2, 0x54AEFF);
+
+    for (int k = -1; k <= 1; k++)
+        fill(cx - r + 3, cy + k * r / 2, 2 * r - 6, 1, 0xFFFFFF);
+
+    fill(cx, cy - r + 2, 1, 2 * r - 4, 0xFFFFFF);
+
+    for (int i = -r + 3; i < r - 3; i++) {
+
+        int dx = (int)(r * 0.45 * sqrt(1.0 - (double)i * i / ((double)r * r)));
+
+        put_pixel(cx - dx, cy + i, 0xFFFFFF, 255);
+        put_pixel(cx + dx, cy + i, 0xFFFFFF, 255);
+    }
+
+    /* a saffron ring: our browser */
+    for (int a = 0; a < 360; a += 2) {
+
+        double t = a * 3.14159265 / 180;
+
+        put_pixel(cx + (int)(r * cos(t)), cy + (int)(r * sin(t)), C_SAFFRON, 255);
+    }
+}
+
+static void open_start_page(void) {
+
+    open_browser(NULL);
+}
+
 static void icon_network_launcher(int x, int y, int s) {
 
     icon_network(x, y, s, 1);
@@ -498,6 +533,7 @@ static void open_home_files(void) {
 static struct launcher launchers[] = {
     {"Terminal",       "Terminal",     icon_terminal, open_terminal},
     {"Files",          "Files",        icon_folder,   open_home_files},
+    {"Bharat Browser", "Browser",      icon_browser,  open_start_page},
     {"System Monitor", "Monitor",      icon_monitor,  open_monitor},
     {"Disks",          "Disks",        icon_disk,     open_disks},
     {"Network",        "Network",      icon_network_launcher, open_network},
@@ -993,9 +1029,10 @@ static void desktop_menu(void) {
     popup_begin(NULL);
     popup_add("Open Terminal", act_launch, 0, 1);
     popup_add("Files", act_launch, 1, 1);
+    popup_add("Bharat Browser", act_launch, 2, 1);
     popup_add("Network", act_launch, LAUNCHERS - 2, 1);
-    popup_add("Disks", act_launch, 3, 1);
-    popup_add("System Monitor", act_launch, 2, 1);
+    popup_add("Disks", act_launch, 4, 1);
+    popup_add("System Monitor", act_launch, 3, 1);
     popup_line();
     popup_add("Background: Sunrise", act_wallpaper, 0, 1);
     popup_add("Background: Tiranga", act_wallpaper, 1, 1);
@@ -1218,6 +1255,22 @@ static void mouse_move(int old_x, int old_y) {
     wm_damage(mouse_x, mouse_y, CURSOR_W, CURSOR_H);
 
     popup_hover();
+
+    /* apps that react to the pointer (links in the browser) */
+    if (drag_mode == DRAG_NONE && !popup_is_open()) {
+
+        struct window *under = window_at(mouse_x, mouse_y);
+
+        if (under && under->hover && under == top_window()) {
+
+            int bx, by, bw, bh;
+
+            content_box(under, &bx, &by, &bw, &bh);
+
+            if (mouse_x >= bx && mouse_y >= by && mouse_x < bx + bw && mouse_y < by + bh)
+                under->hover(under, mouse_x - bx, mouse_y - by);
+        }
+    }
 
     /* a button that lights up (or stops lighting up) under the pointer */
     struct rect now = hover_box(mouse_x, mouse_y);

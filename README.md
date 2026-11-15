@@ -228,7 +228,7 @@ options people use most:
 | Users | `sudo`, `passwd`, `useradd`, `userdel`, `usermod`, `id`, `groups`, `whoami` |
 | Scripts | `test` / `[ ]`, `true`, `false` |
 
-All 86 commands in `src/coreutils/` are one program of about 250 KB:
+All 85 commands in `src/coreutils/` are one program of about 250 KB:
 `/bin/ls`, `/bin/cp` ... are links to `/bin/coreutils`, which looks at the
 name it was started with.
 
@@ -247,8 +247,33 @@ Realtek cards, and for phones sharing their internet over USB.
   `ip link set eth0 up`, `ifconfig`, `ping -c 4 HOST`, `host NAME`,
   `nslookup NAME`, `wget URL`, `ss -tlna`, `netstat`, `hostname -I`.
 - Fixed settings instead of DHCP: `/etc/network.conf`.
-- Not yet: Wi-Fi (needs firmware and a Wi-Fi security program), and
-  `https://` downloads in `wget` (needs TLS, planned with security).
+- Not yet: Wi-Fi (needs firmware and a Wi-Fi security program).
+
+## Bharat Browser
+
+Our own web browser, written from scratch (desktop icon **Browser**):
+
+- **Tabs**, back/forward, reload/stop, a start page, **bookmarks** (`+*`
+  or Ctrl+D), **history** (`about:history`), find in page (Ctrl+F),
+  page source (Ctrl+U).
+- The address bar also **searches** (DuckDuckGo's HTML version).
+- Reads HTML: headings, paragraphs, links, lists, tables, code,
+  quotes, centred text, **pictures** (PNG, JPEG, GIF), and **forms**
+  (text fields, passwords, check boxes, choices, buttons; GET and POST).
+- **https** with certificate checks; cookies for the session.
+- **Downloads** (PDF, ZIP ...) go to `~/Downloads`.
+- Right-click: open links in a new tab, copy link or page address,
+  download links, open or save pictures, bookmark, find, source.
+- **Safer by design:** no JavaScript is run, and everything that touches
+  the internet (network, encryption, pictures) runs in a separate helper
+  program, `bharat-fetch`: a bad page or picture cannot crash the
+  desktop.
+
+Not yet: JavaScript (sites like YouTube or Gmail need it), style sheets
+(CSS), Indian scripts in pages (shown as `?` until the fonts come),
+private mode through Tor (planned with the security work).
+
+`wget` also downloads `https://` addresses now.
 
 ## Right-click and the clipboard
 
