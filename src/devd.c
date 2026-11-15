@@ -70,6 +70,49 @@ static void load_modules(void) {
     fclose(f);
 }
 
+/*
+ * "Coldplug": every device the kernel found tells which driver it needs
+ * (its "modalias", like pci:v00008086d00002922...). Load those drivers,
+ * like udev does on other systems: disk controllers (SATA, NVMe), USB
+ * ports, sound, network cards. Drivers we do not ship are skipped quietly.
+ */
+static void load_device_drivers(void) {
+
+    const char *patterns[] = {"/sys/bus/pci/devices/*/modalias", "/sys/bus/usb/devices/*/modalias",
+                              "/sys/bus/virtio/devices/*/modalias", NULL};
+
+    for (int p = 0; patterns[p]; p++) {
+
+        glob_t g;
+
+        if (glob(patterns[p], 0, NULL, &g) != 0)
+            continue;
+
+        for (size_t i = 0; i < g.gl_pathc; i++) {
+
+            char alias[256];
+
+            disk_read_text(g.gl_pathv[i], alias, sizeof(alias));
+
+            if (!alias[0])
+                continue;
+
+            pid_t pid = fork();
+
+            if (pid == 0) {
+
+                execl("/bin/modprobe", "modprobe", "-q", alias, NULL);
+                _exit(127);
+            }
+
+            if (pid > 0)
+                waitpid(pid, NULL, 0);
+        }
+
+        globfree(&g);
+    }
+}
+
 static void apply_rules(void) {
 
     FILE *f = fopen("/etc/devices", "r");
@@ -602,6 +645,7 @@ int main(void) {
     /* first, so "lsblk -f" works at once; drivers can take a while */
     write_disk_cache();
     load_modules();
+    load_device_drivers();
     session_changed();
 
     while (1) {

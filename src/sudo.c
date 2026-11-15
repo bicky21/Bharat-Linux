@@ -29,6 +29,34 @@ static void stamp_path(uid_t uid, char *out, size_t size) {
     snprintf(out, size, "/run/sudo/%u", (unsigned)uid);
 }
 
+/*
+ * The live system (started from the USB stick or DVD) has a "live" user
+ * without a password, like other live systems. /etc/sudo-nopasswd lists
+ * such users; it exists only on the live system and must belong to root.
+ */
+static int no_password_needed(const char *name) {
+
+    struct stat st;
+
+    if (stat("/etc/sudo-nopasswd", &st) != 0 || st.st_uid != 0 || (st.st_mode & 022))
+        return 0;
+
+    FILE *f = fopen("/etc/sudo-nopasswd", "r");
+    char line[64];
+    int found = 0;
+
+    while (f && !found && fgets(line, sizeof(line), f)) {
+
+        line[strcspn(line, "\n")] = 0;
+        found = !strcmp(line, name);
+    }
+
+    if (f)
+        fclose(f);
+
+    return found;
+}
+
 /* Did this user type the right password in the last 5 minutes? */
 static int recently_checked(uid_t uid) {
 
@@ -113,7 +141,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
-        if (!recently_checked(getuid())) {
+        if (!recently_checked(getuid()) && !no_password_needed(me.name)) {
 
             int ok = 0;
             char prompt[128], password[128];

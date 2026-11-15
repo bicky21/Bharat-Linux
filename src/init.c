@@ -166,6 +166,14 @@ pid_t start_login() {
 
         banner();
 
+        /* the live system (USB stick or DVD): say how to log in and install */
+        if (access("/etc/live", F_OK) == 0) {
+
+            printf("Live system. Log in as: live  (password: live)\n"
+                   "To install Bharat Linux onto a disk: sudo bharat-install\n\n");
+            fflush(stdout);
+        }
+
         execl("/bin/login",
               "/bin/login",
               NULL);
@@ -308,7 +316,22 @@ int main() {
     start_devd();
     start_services();
 
-    int graphical = graphics_available();
+    /* "bharat.text" on the kernel command line: the text login only */
+    char cmdline[1024] = "";
+    FILE *cf = fopen("/proc/cmdline", "r");
+
+    if (cf) {
+
+        if (!fgets(cmdline, sizeof(cmdline), cf))
+            cmdline[0] = 0;
+
+        fclose(cf);
+    }
+
+    if (strstr(cmdline, "bharat.text"))
+        use_text_login = 1;
+
+    int graphical = !use_text_login && graphics_available();
     pid_t login = start_login();
     time_t started = time(NULL);
     int quick_failures = 0;
